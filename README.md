@@ -114,3 +114,7 @@ Door and ESP candidates are indexed when objects appear rather than rescanning a
 - **Floor > Auto Floor > Auto Locker (TP / Pathfind)** gives available lockers priority over loot and doors when a recognized world rusher is detected within 300 studs. It checks available prompts and occupancy, confirms hiding using character/player state or locker occupancy, and temporarily skips lockers whose entry is not confirmed.
 - Hiding continues for two seconds after the last threat detection. Automatic exit requires a standard Exit/Leave prompt in the locker; if the game uses a custom exit action, the status asks you to leave manually. Detection does not cover screen-only A-90 or identify every possible mimic model.
 - Mock tests cover forward camera aiming after passing a door, no repeated decoration scans, and confirmed hiding / threat-clear exit in both movement methods. Live game performance and locker state bindings remain unverified.
+
+## Movement-based locker exit (v1.4.3)
+
+After the existing threat-clear delay, Auto Locker sends a short camera-relative forward movement request when no Exit/Leave prompt exists. This uses Humanoid movement, shared by PC and mobile, rather than holding a virtual keyboard key. Auto Floor waits for hiding state to clear before resuming. Pulses stop when danger returns or automation is disabled; three unconfirmed attempts produce a status message instead of moving forever. Offline tests cover movement-based exits in both TP and Pathfind. Live input-handler compatibility remains unverified.

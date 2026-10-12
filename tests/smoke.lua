@@ -295,12 +295,23 @@ for _,methodName in ipairs({"TP","Pathfind"}) do
     assert(char.attrs.Hiding==true and hiddenCalls==1,"Auto Locker did not confirm entry: "..methodName)
     run.Heartbeat:Fire(0.2); assert(hiddenCalls==1,"Repeated hide request while already hidden")
     hazard.Parent=nil; ws.DescendantRemoving:Fire(hazard)
-    hidePrompt.ActionText="Exit"
+    -- No Exit prompt: this game leaves lockers through movement input.
+    local originalMove=hum.Move
+    local exitMoves=0
+    hum.Move=function(self,v,relative)
+        originalMove(self,v)
+        if v.Magnitude>0 and relative then exitMoves=exitMoves+1; char.attrs.Hiding=false end
+    end
+    run.bindings["ThinkingHub_test-guid"](0.016)
+    assert(exitMoves==0,"Movement requested before threat cleared")
     -- Clear prompt request cooldown while leaving all controller clocks intact.
     local start=os.clock(); local realClock=os.clock
     os.clock=function() return start+10 end
     run.Heartbeat:Fire(3)
-    assert(char.attrs.Hiding==false,"Auto Locker did not exit when clear: "..methodName)
+    run.bindings["ThinkingHub_test-guid"](0.016)
+    assert(char.attrs.Hiding==false and exitMoves==1,"Auto Locker did not move to exit: "..methodName)
+    run.Heartbeat:Fire(0.2)
+    hum.Move=originalMove
     os.clock=realClock
     ui.TH_AutoFloor:SetValue(false); ui.TH_AutoLocker:SetValue(false)
     safe.Parent=nil; ws.DescendantRemoving:Fire(safe); ws.DescendantRemoving:Fire(safePart); ws.DescendantRemoving:Fire(hidePrompt)

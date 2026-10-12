@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.4.2"
+local VERSION = "1.4.3"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -31,6 +31,7 @@ local visited, cooldown, notified = {}, {}, {}
 local route, target, movementGoal, pathVisual, blockedConnection
 local retryAt, lastProgress, progressPosition, targetSince = 0, 0, nil, 0
 local danger, hidden, heldLocker, lastDanger, threatScan = false, false, nil, -math.huge, 0
+local exitPulseUntil, exitRetryAt, exitAttempts = 0, 0, 0
 local cachedContainer, containerUntil, cachedGeometricRoom, roomUntil = nil, 0, nil, 0
 local character, humanoid, root
 local configControls, controls, statusLabel, detectionLabel = {}, {}, nil, nil
@@ -442,10 +443,12 @@ local function updateDanger()
         end
         active=lookupClock-lastDanger<2
     end
-    if active~=danger then danger=active; resetRoute() end
+    if active~=danger then
+        danger=active; exitPulseUntil=0; exitRetryAt=0; exitAttempts=0; resetRoute()
+    end
     local nowHidden=isHidden()
     if nowHidden~=hidden then
-        hidden=nowHidden; resetRoute()
+        hidden=nowHidden; exitPulseUntil=0; exitRetryAt=0; exitAttempts=0; resetRoute()
         if not hidden then heldLocker=nil end
     end
 end
@@ -473,7 +476,8 @@ local function lockerCandidates()
 end
 local function leaveLocker()
     movementGoal=nil
-    if danger then status("Auto Locker: hiding until the entity clears."); return end
+    if danger then exitPulseUntil=0; status("Auto Locker: hiding until the entity clears."); return end
+    if not state.AutoLocker then exitPulseUntil=0; return end
     if heldLocker and heldLocker.Parent then
         for _,p in ipairs(heldLocker:GetDescendants()) do
             if p:IsA("ProximityPrompt") and p.Enabled then
@@ -484,7 +488,15 @@ local function leaveLocker()
             end
         end
     end
-    status("Entity cleared. No exit prompt detected; leave the locker to resume.")
+    if lookupClock>=exitRetryAt then
+        if exitAttempts>=3 then
+            status("Movement exit not confirmed. Move manually to leave the locker."); return
+        end
+        exitAttempts=exitAttempts+1
+        exitPulseUntil=lookupClock+0.15
+        exitRetryAt=lookupClock+1
+        status("Auto Locker: moving to exit; waiting for confirmation.")
+    end
 end
 local function candidates()
     if state.AutoLocker and danger then return lockerCandidates() end
@@ -1071,7 +1083,13 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
     end
     cameraFrame=nil; frameCamera=nil
     if not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then return end
-    if hidden or root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then return end
+    if hidden then
+        -- Movement input is shared by PC and mobile; no held virtual key needed.
+        local requestExit=state.AutoLocker and not danger and lookupClock<exitPulseUntil
+        humanoid:Move(requestExit and Vector3.new(0,0,-1) or Vector3.zero,true)
+        return
+    end
+    if root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then return end
     if state.Method=="Pathfind" then
         local delta=movementGoal and movementGoal-root.Position or Vector3.zero
         local flat=Vector3.new(delta.X,0,delta.Z)
