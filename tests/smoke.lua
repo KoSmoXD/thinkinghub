@@ -189,6 +189,18 @@ ui.TH_Notify:SetValue(true)
 local n=#library.notes
 run.Heartbeat:Fire(1); run.Heartbeat:Fire(1)
 assert(#library.notes==n+1,"Entity notification missing or repeated")
+local cash=node("Part","Pickup",drawer)
+local cashPrompt=node("ProximityPrompt","Interact",cash)
+cashPrompt.HoldDuration=0; cashPrompt.Enabled=true; cashPrompt.MaxActivationDistance=30
+cashPrompt.ActionText="Collect"; cashPrompt.ObjectText="$25"
+ws.DescendantAdded:Fire(cash); ws.DescendantAdded:Fire(cashPrompt)
+local before=fired
+ui.TH_BucksESP:SetValue(true); run.Heartbeat:Fire(1)
+assert(fired>before,"Cash prompt inside drawer not interacted")
+local foundCash=false
+for _,e in ipairs(esp.created) do if e.settings.Model==cash and e.settings.Name:find("Bucks",1,true) then foundCash=true end end
+assert(foundCash,"Prompt-only cash did not receive Bucks ESP")
+ui.TH_BucksESP:SetValue(false); run.Heartbeat:Fire(1)
 local color=Color3.new(0.1,0.2,0.3); ui.TH_DoorColor:SetValue(color); run.Heartbeat:Fire(1)
 assert(esp.created[1].color==color,"ESP color did not update")
 local originalAttribute=player.GetAttribute

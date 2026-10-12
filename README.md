@@ -88,3 +88,7 @@ No Camera Shake zeroes Humanoid camera offsets and removes effects applied after
 ## Next door only (v1.2.0)
 
 Door ESP and Auto Floor share one selector. It requires the current room number and a door destination equal to that number plus one (including `A-212` and `A-1000`). Destinations come from a numbered door name, a sign TextLabel/TextButton, or a DestinationRoom / NextRoom / DoorNumber / RoomNumber attribute. The candidate must belong to the current room when that room is resolved. Generic doors without a destination, previous doors, and later doors are excluded. If the next numbered door cannot be identified, ESP stays empty and navigation waits rather than targeting an arbitrary door. This mapping still needs live-game validation.
+
+## Interaction detection (v1.2.1)
+
+Money ESP also resolves pickup prompts labeled Bucks / Cash / Money or `$25`-style amounts, including anonymous pickup parts inside drawers. Numbered drawer names such as `Drawer_1` are recognized. If interactions still fail, stand beside a drawer or money pickup, choose **Floor > Detection > Copy interaction diagnostics**, and share the copied report. It includes nearby interaction classes, instance paths, labels, ranges and available interaction functions, so a custom game adapter can be written from actual evidence.

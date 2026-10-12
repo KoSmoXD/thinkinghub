@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.2.0"
+local VERSION = "1.2.1"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -91,8 +91,8 @@ local function classify(o)
     if not (o:IsA("Model") or o:IsA("BasePart")) or isPlayerObject(o) then return nil end
     local n=normalize(o.Name)
     if names.Entities[n] or o:GetAttribute("IsEntity")==true then return "Entities" end
-    if names.Bucks[n] then return "Bucks" end
-    if names.Drawer[n] then return "Drawer" end
+    if names.Bucks[n] or n:match("^bucks?%d+$") or n:match("^money%d+$") or n:match("^cash%d+$") then return "Bucks" end
+    if names.Drawer[n] or n:match("^drawer%d+$") then return "Drawer" end
     if names.Door[n] then return "Door" end
 end
 local function canonical(o, kind)
@@ -105,15 +105,22 @@ local function canonical(o, kind)
     return chosen
 end
 local function interactionKind(p)
+    local raw=p:IsA("ProximityPrompt") and (p.ObjectText.." "..p.ActionText.." "..p.Name) or p.Name
+    local label=normalize(raw)
+    local semantic
+    if label:find("buck",1,true) or label:find("cash",1,true) or label:find("money",1,true)
+        or raw:match("%$%s*%d") then semantic="Bucks"
+    elseif label:find("drawer",1,true) then semantic="Drawer" end
+    local fallback
     local o=p.Parent
     while o and o~=WS do
+        if not fallback and (o:IsA("BasePart") or o:IsA("Model")) then fallback=o end
         local kind=classify(o)
-        if kind then return kind, canonical(o,kind) end
+        -- A cash prompt inside a drawer still describes cash, not the drawer.
+        if kind and (not semantic or semantic==kind) then return kind,canonical(o,kind) end
         o=o.Parent
     end
-    local label=normalize((p:IsA("ProximityPrompt") and (p.ObjectText.." "..p.ActionText)) or p.Name)
-    if label:find("buck",1,true) or label:find("cash",1,true) or label:find("money",1,true) then return "Bucks",p.Parent end
-    if label:find("drawer",1,true) then return "Drawer",p.Parent end
+    if semantic and fallback and not isPlayerObject(fallback) then return semantic,fallback end
 end
 local function roomContainer()
     if state.RoomsPath~="" then
@@ -226,7 +233,7 @@ local function interact(p)
     local distance=(root.Position-pos).Magnitude
     if distance>p.MaxActivationDistance then return false end
     if p:IsA("ProximityPrompt") then
-        if type(fireproximityprompt)~="function" then return false end
+        if type(fireproximityprompt)~="function" then status("Auto interact requires fireproximityprompt in this client."); return false end
         cooldown[p]=os.clock()+math.max(0.7,p.HoldDuration+0.3)
         local generation=revision
         task.spawn(function()
@@ -236,7 +243,7 @@ local function interact(p)
             if not ok then status("Interaction failed: "..tostring(err)) end
         end)
     else
-        if type(fireclickdetector)~="function" then return false end
+        if type(fireclickdetector)~="function" then status("Auto interact requires fireclickdetector in this client."); return false end
         cooldown[p]=os.clock()+0.8
         local ok,err=pcall(fireclickdetector,p)
         if not ok then status("Click failed: "..tostring(err)) end
@@ -517,6 +524,19 @@ local function refreshESP()
             end
         end
     end
+    -- Cash can have an anonymous part name but a descriptive pickup prompt.
+    for _,set in ipairs({prompts,clicks}) do
+        for p in pairs(set) do
+            local kind,model=interactionKind(p)
+            if kind=="Bucks" and model and not seen[model] and interactionAvailable(p) then
+                seen[model]=true; count.Bucks=count.Bucks+1
+                if state.BucksESP and ESP then
+                    local pos=position(model)
+                    if pos then list[#list+1]={model=model,kind="Bucks",distance=root and (pos-root.Position).Magnitude or 0} end
+                end
+            end
+        end
+    end
     table.sort(list,function(a,b) return a.distance<b.distance end)
     for i=1,math.min(80,#list) do
         local item=list[i]; wanted[item.model]=true
@@ -657,6 +677,31 @@ detection:AddLabel("Comma-separated instance names. Case, spaces and hyphens are
 detection:AddButton({Text="Rescan",Func=function()
     for _,o in ipairs(WS:GetDescendants()) do register(o) end
     refreshESP(); resetRoute(); notify("Detection refreshed.")
+end})
+detection:AddButton({Text="Copy interaction diagnostics",Func=function()
+    local rows={"Thinking Hub "..VERSION,
+        "fireproximityprompt="..type(fireproximityprompt).." fireclickdetector="..type(fireclickdetector)}
+    local nearby={}
+    for _,o in ipairs(WS:GetDescendants()) do
+        if o:IsA("ProximityPrompt") or o:IsA("ClickDetector") or o:IsA("TouchTransmitter") then
+            local pos=position(o.Parent)
+            if pos and root and (pos-root.Position).Magnitude<=40 then
+                nearby[#nearby+1]={object=o,distance=(pos-root.Position).Magnitude}
+            end
+        end
+    end
+    table.sort(nearby,function(a,b) return a.distance<b.distance end)
+    for i=1,math.min(40,#nearby) do
+        local o=nearby[i].object
+        local kind=interactionKind(o)
+        local details=o:IsA("ProximityPrompt") and string.format(" action=%q object=%q enabled=%s range=%s",o.ActionText,o.ObjectText,tostring(o.Enabled),tostring(o.MaxActivationDistance)) or ""
+        rows[#rows+1]=string.format("%.1f studs | %s | %s | detected=%s%s",nearby[i].distance,o.ClassName,o:GetFullName(),tostring(kind),details)
+    end
+    if #nearby==0 then rows[#rows+1]="No standard interactions within 40 studs." end
+    local report=table.concat(rows,"\n")
+    print(report)
+    if type(setclipboard)=="function" then setclipboard(report); notify("Diagnostics copied. Paste them into chat.")
+    else notify("Diagnostics printed in the client console.") end
 end})
 -- Configs are data-only JSON; config names cannot escape the hub folder.
 local configFolder="ThinkingHub/ROOMSRevisited/configs"
