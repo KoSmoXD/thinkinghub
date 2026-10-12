@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -31,8 +31,11 @@ local retryAt, lastProgress, progressPosition, targetSince = 0, 0, nil, 0
 local character, humanoid, root
 local configControls, controls, statusLabel, detectionLabel = {}, {}, nil, nil
 local lastStatus, lastError, soundId = "", nil, ""
+local savedFOV, savedOffsets = {}, {}
+local cameraFrame, frameCamera
 local renderName = "ThinkingHub_" .. HTTP:GenerateGUID(false)
 local state = {
+    LoopFOV=false, FOV=70, NoShake=false,
     SpeedEnabled=false, Speed=40, Instant=false, Interact=false,
     DoorESP=false, BucksESP=false, EntitiesESP=false, Notify=false,
     AutoFloor=false, Method="Pathfind", AutoLoot=false, AutoLook=false, Smooth=true,
@@ -457,10 +460,25 @@ local function refreshESP()
     for o in pairs(espObjects) do if not wanted[o] then destroyESP(o) end end
     if detectionLabel then detectionLabel:SetText(string.format("Detected: %d doors | %d bucks | %d entities",count.Door,count.Bucks,count.Entities)) end
 end
+local function restoreFOV()
+    for camera,value in pairs(savedFOV) do
+        if camera.Parent then camera.FieldOfView=value end
+    end
+    savedFOV={}
+end
+local function restoreOffsets()
+    for h,value in pairs(savedOffsets) do
+        if h.Parent then h.CameraOffset=value end
+    end
+    savedOffsets={}; cameraFrame=nil; frameCamera=nil
+end
 local function cleanup()
     if closed then return end
     closed=true; state.AutoFloor=false; resetRoute(); restoreSpeed(); restoreHolds()
     RS:UnbindFromRenderStep(renderName)
+    RS:UnbindFromRenderStep(renderName.."CameraBefore")
+    RS:UnbindFromRenderStep(renderName.."CameraCapture")
+    restoreFOV(); restoreOffsets()
     for _,c in ipairs(connections) do c:Disconnect() end
     for o in pairs(espObjects) do destroyESP(o) end
     sound:Destroy()
@@ -492,6 +510,7 @@ local Visual=Window:AddTab("Visual","eye")
 local visuals=Visual:AddLeftTabbox()
 local espBox=visuals:AddTab("ESP")
 local notifyBox=visuals:AddTab("Notify")
+local cameraBox=visuals:AddTab("Camera")
 local Floor=Window:AddTab("Floor","route")
 local floorTabs=Floor:AddLeftTabbox()
 local auto=floorTabs:AddTab("Auto Floor")
@@ -532,6 +551,12 @@ for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"}
     addToggle(espBox,entry[1].."ESP",entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
+addToggle(cameraBox,"LoopFOV","Loop FOV",function(v) if not v then restoreFOV() end end)
+local fov=cameraBox:AddSlider("TH_FOV",{Text="Field of view",Default=70,Min=1,Max=120,Rounding=0})
+controls.FOV=fov; configControls.FOV={control=fov,kind="number",min=1,max=120}
+fov:OnChanged(function(v) state.FOV=v end)
+addToggle(cameraBox,"NoShake","No Camera Shake",function(v) if not v then restoreOffsets() end end)
+cameraBox:AddLabel("Loop FOV reapplies your chosen FOV each frame. No Camera Shake removes camera offsets and late shake on the standard camera; scripted cutscenes keep their camera control.",true)
 addToggle(notifyBox,"Notify","Notify entities",function() notified={} end)
 notifyBox:AddLabel("Roblox sound ID (numbers or rbxassetid://ID)",true)
 addInput(notifyBox,"Sound","Notify sound ID")
@@ -612,7 +637,7 @@ local function loadConfig(name)
             elseif entry.kind=="method" then assert(v=="TP" or v=="Pathfind","Invalid method")
             else
                 assert(type(v)==entry.kind,"Invalid setting: "..key)
-                if entry.kind=="number" then assert(v>=0 and v<=1000,"Speed must be 0-1000") end
+                if entry.kind=="number" then assert(v>=(entry.min or 0) and v<=(entry.max or 1000),"Invalid range: "..key) end
                 if entry.kind=="string" then assert(#v<=2048,"Setting too long") end
             end
             pending[key]=v
@@ -696,8 +721,38 @@ connect(RS.Heartbeat,function(dt)
         if reason~=lastError then lastError=reason; warn("[ThinkingHub] "..tostring(reason)) end
     end
 end)
+-- Capture the normal camera before later shake effects. Do not pin a
+-- Scriptable camera, since the game may update it outside this priority range.
+RS:BindToRenderStep(renderName.."CameraBefore",Enum.RenderPriority.Camera.Value-1,function()
+    cameraFrame=nil; frameCamera=nil
+    if closed or not state.NoShake then return end
+    local c=player.Character
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    if h then
+        if savedOffsets[h]==nil then savedOffsets[h]=h.CameraOffset end
+        h.CameraOffset=Vector3.zero
+    end
+end)
+RS:BindToRenderStep(renderName.."CameraCapture",Enum.RenderPriority.Camera.Value+1,function()
+    local camera=WS.CurrentCamera
+    if not closed and state.NoShake and camera and camera.CameraType~=Enum.CameraType.Scriptable then
+        frameCamera=camera; cameraFrame=camera.CFrame
+    end
+end)
 RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
-    if closed or not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then return end
+    if closed then return end
+    local camera=WS.CurrentCamera
+    if camera then
+        if state.LoopFOV then
+            if savedFOV[camera]==nil then savedFOV[camera]=camera.FieldOfView end
+            camera.FieldOfView=state.FOV
+        end
+        if state.NoShake and camera==frameCamera and cameraFrame and camera.CameraType~=Enum.CameraType.Scriptable then
+            camera.CFrame=cameraFrame
+        end
+    end
+    cameraFrame=nil; frameCamera=nil
+    if not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then return end
     if root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then return end
     if state.Method=="Pathfind" then
         local delta=movementGoal and movementGoal-root.Position or Vector3.zero

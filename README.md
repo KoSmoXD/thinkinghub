@@ -78,3 +78,9 @@ Mocks cannot verify the live map, server behavior, game interactions, or renderi
 - [User-supplied game wiki](https://rooms-revisited.fandom.com/wiki/ROOMS:_Revisited_Wiki).
 
 Dependency code stays in its upstream repositories; the hub loads the referenced versions.
+
+## Camera controls (v1.1.0)
+
+Visual > Camera adds **Loop FOV**, a **1–120 FOV slider**, and **No Camera Shake**. FOV runs independently of Auto Floor and restores saved values when disabled or unloaded, including for replacement cameras. Both settings are saved in configs.
+
+No Camera Shake zeroes Humanoid camera offsets and removes effects applied after the standard camera update. It leaves Scriptable cameras / cutscenes alone. Shake applied within a custom game camera controller may require a game-specific adapter; live compatibility is unverified. Auto look is applied after shake suppression.

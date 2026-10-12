@@ -36,7 +36,7 @@ Color3={new=function(r,g,b) return {R=r,G=g,B=b} end}
 Color3.fromRGB=function(r,g,b) return Color3.new(r/255,g/255,b/255) end
 ColorSequence={new=function(v) return v end}
 RaycastParams={new=function() return {} end}
-Enum={RaycastFilterType={Exclude=1},PathStatus={Success=1},PathWaypointAction={Jump=1},RenderPriority={Last={Value=200}},KeyCode={RightControl=1}}
+Enum={RaycastFilterType={Exclude=1},PathStatus={Success=1},PathWaypointAction={Jump=1},CameraType={Scriptable=2,Custom=1},RenderPriority={Camera={Value=100},Last={Value=200}},KeyCode={RightControl=1}}
 local function node(class,name,parent)
     local o={ClassName=class,Name=name or class,Parent=parent,children={},attrs={},Position=Vector3.zero,CFrame=cf(Vector3.zero),Size=Vector3.new(2,2,2)}
     if parent then parent.children[#parent.children+1]=o end
@@ -145,6 +145,7 @@ fireproximityprompt=function() fired=fired+1 end
 fireclickdetector=function() fired=fired+1 end
 task={spawn=function(fn) fn() end}
 warn=function(s) error(s) end
+hum.CameraOffset=Vector3.new(0,1,0)
 local hub=assert(loadfile("rooms_revisited.lua"))()
 assert(hub and buttons["Unload"] and ui.TH_EntitiesColor,"Hub bootstrap failed")
 ui.TH_Speed:SetValue(1000); ui.TH_SpeedEnabled:SetValue(true)
@@ -188,7 +189,21 @@ ui.TH_Speed:SetValue(42); buttons["Overwrite config"](); ui.TH_Speed:SetValue(10
 ui.TH_ConfigName:SetValue("../escape"); buttons["Create config"](); assert(not files["ThinkingHub/ROOMSRevisited/configs/../escape.json"])
 buttons["Delete config"](); assert(not next(files),"Config delete failed")
 ui.TH_SpeedEnabled:SetValue(true); ui.TH_Instant:SetValue(true); run.Heartbeat:Fire(0.1)
+local camera=node("Camera","Camera",ws); camera.FieldOfView=70; camera.CameraType=1; ws.CurrentCamera=camera
+local function render(name) assert(run.bindings["ThinkingHub_test-guid"..name])() end
+ui.TH_FOV:SetValue(95); ui.TH_LoopFOV:SetValue(true)
+render(""); assert(camera.FieldOfView==95,"FOV depends on Auto Floor")
+camera.FieldOfView=50; render(""); assert(camera.FieldOfView==95,"FOV did not loop")
+ui.TH_LoopFOV:SetValue(false); assert(camera.FieldOfView==70,"FOV restore failed")
+ui.TH_NoShake:SetValue(true); render("CameraBefore"); assert(hum.CameraOffset.Magnitude==0)
+local base=cf(Vector3.zero); camera.CFrame=base; render("CameraCapture")
+camera.CFrame=cf(Vector3.new(3,0,0)); render(""); assert(camera.CFrame==base,"Late shake was not removed")
+camera.CameraType=2; render("CameraBefore"); render("CameraCapture")
+local scripted=cf(Vector3.new(4,0,0)); camera.CFrame=scripted; render(""); assert(camera.CFrame==scripted,"Scripted camera overwritten")
+ui.TH_NoShake:SetValue(false); assert(hum.CameraOffset.Y==1,"CameraOffset not restored")
+ui.TH_LoopFOV:SetValue(true); render("")
 hub.Unload(); hub.Unload()
+assert(camera.FieldOfView==70,"FOV not restored on unload")
 assert(hum.WalkSpeed==16 and prompt.HoldDuration==2,"Unload restore failed")
 assert(not next(run.bindings),"Render callback leaked")
 for _,c in ipairs(run.Heartbeat.listeners) do assert(not c.c.Connected,"Heartbeat leaked") end
