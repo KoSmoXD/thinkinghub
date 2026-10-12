@@ -84,3 +84,7 @@ Dependency code stays in its upstream repositories; the hub loads the referenced
 Visual > Camera adds **Loop FOV**, a **1–120 FOV slider**, and **No Camera Shake**. FOV runs independently of Auto Floor and restores saved values when disabled or unloaded, including for replacement cameras. Both settings are saved in configs.
 
 No Camera Shake zeroes Humanoid camera offsets and removes effects applied after the standard camera update. It leaves Scriptable cameras / cutscenes alone. Shake applied within a custom game camera controller may require a game-specific adapter; live compatibility is unverified. Auto look is applied after shake suppression.
+
+## Next door only (v1.2.0)
+
+Door ESP and Auto Floor share one selector. It requires the current room number and a door destination equal to that number plus one (including `A-212` and `A-1000`). Destinations come from a numbered door name, a sign TextLabel/TextButton, or a DestinationRoom / NextRoom / DoorNumber / RoomNumber attribute. The candidate must belong to the current room when that room is resolved. Generic doors without a destination, previous doors, and later doors are excluded. If the next numbered door cannot be identified, ESP stays empty and navigation waits rather than targeting an arbitrary door. This mapping still needs live-game validation.

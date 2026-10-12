@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -133,13 +133,28 @@ local function roomOf(o, container)
     while p and p.Parent~=container do p=p.Parent end
     return p
 end
+-- Accept full room identifiers, never arbitrary digits inside asset names.
+local function roomNumber(value)
+    if type(value)=="number" then return value>=0 and value%1==0 and value or nil end
+    if type(value)~="string" then return nil end
+    local text=value:match("^%s*(.-)%s*$"):upper()
+    local digits=text:match("^A[%s_%-]*(%d+)$") or text:match("^(%d+)$")
+    return digits and tonumber(digits) or nil
+end
 local function currentRoom(container)
     if not container then return nil end
     local value=player:GetAttribute("CurrentRoom") or (character and character:GetAttribute("CurrentRoom"))
     if value~=nil then
         local r=container:FindFirstChild(tostring(value))
         if r then return r end
+        local number=roomNumber(value)
+        if number then
+            for _,candidate in ipairs(container:GetChildren()) do
+                if roomNumber(candidate.Name)==number then return candidate end
+            end
+        end
     end
+    if not root then return nil end
     -- Prefer the room containing this player over a teammate's LatestRoom.
     local best, score
     for _,r in ipairs(container:GetChildren()) do
@@ -262,6 +277,62 @@ local function doorPart(o)
     if exit and exit:IsA("BasePart") then return exit end
     return o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart",true)
 end
+local function doorNumber(model)
+    for _,key in ipairs({"DestinationRoom","NextRoom","DoorNumber","RoomNumber"}) do
+        local n=roomNumber(model:GetAttribute(key))
+        if n then return n end
+    end
+    local n=roomNumber(model.Name)
+    if n then return n end
+    -- Number signs are often SurfaceGui TextLabels under the actual door.
+    for _,child in ipairs(model:GetDescendants()) do
+        if child:IsA("TextLabel") or child:IsA("TextButton") then
+            n=roomNumber(child.Text)
+            if n then return n end
+        elseif child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+            local key=normalize(child.Name)
+            if key=="doornumber" or key=="roomnumber" or key=="nextroom" then
+                n=roomNumber(child.Value)
+                if n then return n end
+            end
+        end
+    end
+end
+local function nextDoor()
+    if not root then return nil end
+    local container=roomContainer()
+    local room=currentRoom(container)
+    local current=roomNumber(player:GetAttribute("CurrentRoom"))
+        or roomNumber(character and character:GetAttribute("CurrentRoom"))
+        or (room and roomNumber(room.Name))
+    if not current then return nil end
+    local best,score,seen=nil,nil,{}
+    for o in pairs(objects) do
+        if o.Parent and not isPlayerObject(o) then
+            local kind=classify(o)
+            local numbered=roomNumber(o.Name)
+            local explicit=kind=="Door" or (numbered and o:IsA("Model") and o:FindFirstChild("Door"))
+            if explicit then
+                local model=kind=="Door" and canonical(o,"Door") or o
+                if not seen[model] and model~=room and (not container or model.Parent~=container) then
+                    seen[model]=true
+                    local number=doorNumber(model)
+                    -- A numbered sign / destination is mandatory. Generic doors never qualify.
+                    if number and (not current or number==current+1) and (not room or model:IsDescendantOf(room)) then
+                        local part=doorPart(model)
+                        if part then
+                            local distance=(part.Position-root.Position).Magnitude
+                            if not score or distance<score then
+                                best={model=model,part=part,number=number,room=room}; score=distance
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
 local function candidates()
     local container=roomContainer()
     local room=currentRoom(container)
@@ -286,26 +357,18 @@ local function candidates()
             end
         end
     end
-    for o in pairs(objects) do
-        if o.Parent and classify(o)=="Door" then
-            local model=canonical(o,"Door")
-            if not seen[model] and not visited[model] and (cooldown[model] or 0)<=os.clock()
-                and (not room or model:IsDescendantOf(room)) then
-                seen[model]=true
-                local part=doorPart(model)
-                if part then
-                    local pos=part.Position
-                    local normal=Vector3.new(part.CFrame.LookVector.X,0,part.CFrame.LookVector.Z)
-                    if normal.Magnitude>0.01 then
-                        normal=normal.Unit
-                        local entrance=room and room:FindFirstChild("RoomEntrance",true)
-                        local inside=position(entrance) or root.Position
-                        if (inside-pos):Dot(normal)<0 then normal=-normal end
-                        list[#list+1]={model=model,prompt=interactionFor(model),kind="Door",pos=pos,
-                            approach=pos+normal*5,crossing=pos-normal*5,priority=1}
-                    end
-                end
-            end
+    local next=nextDoor()
+    if next and not visited[next.model] and (cooldown[next.model] or 0)<=os.clock() then
+        local model,part=next.model,next.part
+        local pos=part.Position
+        local normal=Vector3.new(part.CFrame.LookVector.X,0,part.CFrame.LookVector.Z)
+        if normal.Magnitude>0.01 then
+            normal=normal.Unit
+            local entrance=room and room:FindFirstChild("RoomEntrance",true)
+            local inside=position(entrance) or root.Position
+            if (inside-pos):Dot(normal)<0 then normal=-normal end
+            list[#list+1]={model=model,prompt=interactionFor(model),kind="Door",pos=pos,
+                number=next.number,approach=pos+normal*5,crossing=pos-normal*5,priority=1}
         end
     end
     table.sort(list,function(a,b)
@@ -318,7 +381,7 @@ local function plan()
     local token=revision
     local startRoot=root
     local list=candidates()
-    if #list==0 then status("No target detected. Check Floor > Detection names / room folder."); retryAt=os.clock()+1; return end
+    if #list==0 then status("No numbered next door detected. Waiting for an A-### sign / destination."); retryAt=os.clock()+1; return end
     for _,item in ipairs(list) do
         if closed or token~=revision or not state.AutoFloor then return end
         local delta=startRoot.Position-item.pos
@@ -364,6 +427,10 @@ local function moveController()
         movementGoal=nil; status("Paused: character immobilized or hiding."); return
     end
     if not target then return end
+    if target.kind=="Door" then
+        local selected=nextDoor()
+        if not selected or selected.model~=target.model then resetRoute(); return end
+    end
     if not target.model or not target.model:IsDescendantOf(WS) then finishTarget(true); return end
     local now=os.clock()
     if now-targetSince>12 then status("Target timed out; selecting again."); finishTarget(false); return end
@@ -427,11 +494,15 @@ local function destroyESP(o)
 end
 local function refreshESP()
     local wanted,seen,list={},{},{}
-    local count={Door=0,Bucks=0,Entities=0}
+    local selected=nextDoor()
+    local count={Door=selected and 1 or 0,Bucks=0,Entities=0}
+    if selected and state.DoorESP and ESP then
+        list[#list+1]={model=selected.model,kind="Door",distance=-1,label=string.format("Next door | A-%03d",selected.number)}
+    end
     for o in pairs(objects) do
         if o.Parent then
             local kind=classify(o)
-            if kind and kind~="Drawer" then
+            if kind and kind~="Drawer" and kind~="Door" then
                 local model=canonical(o,kind)
                 if not seen[model] then
                     seen[model]=true; count[kind]=count[kind]+1
@@ -452,10 +523,13 @@ local function refreshESP()
         local entry=espObjects[item.model]
         local color=state[item.kind.."Color"]
         if not entry or entry.object.Deleted then
-            local ok,obj=pcall(function() return ESP:Add({Name=item.kind.." | "..item.model.Name,
+            local ok,obj=pcall(function() return ESP:Add({Name=item.label or (item.kind.." | "..item.model.Name),
                 Model=item.model,ESPType="Text",Color=color,MaxDistance=5000,TextSize=16}) end)
             if ok then espObjects[item.model]={object=obj,kind=item.kind} end
-        elseif entry.color~=color then entry.object:SetEveryColor(color,true); entry.color=color end
+        else
+            if entry.color~=color then entry.object:SetEveryColor(color,true); entry.color=color end
+            if entry.object.CurrentSettings then entry.object.CurrentSettings.Name=item.label or (item.kind.." | "..item.model.Name) end
+        end
     end
     for o in pairs(espObjects) do if not wanted[o] then destroyESP(o) end end
     if detectionLabel then detectionLabel:SetText(string.format("Detected: %d doors | %d bucks | %d entities",count.Door,count.Bucks,count.Entities)) end
@@ -548,7 +622,7 @@ end)
 addToggle(playerBox,"Interact","Auto interact (drawers / money)")
 playerBox:AddLabel("Loop speed reapplies WalkSpeed each frame. Auto interact uses nearby prompts and click detectors.",true)
 for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"}}) do
-    addToggle(espBox,entry[1].."ESP",entry[2].." ESP")
+    addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Next door ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
 addToggle(cameraBox,"LoopFOV","Loop FOV",function(v) if not v then restoreFOV() end end)

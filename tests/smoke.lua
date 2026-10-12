@@ -95,7 +95,7 @@ function library:Notify(v) self.notes[#self.notes+1]=v.Description end
 _G.__testLibrary=library
 local esp={created={}}
 function esp:Add(settings)
-    local e={settings=settings}
+    local e={settings=settings,CurrentSettings=settings}
     function e:Destroy() self.Deleted=true end
     function e:SetEveryColor(c) self.color=c end
     self.created[#self.created+1]=e; return e
@@ -106,6 +106,7 @@ function ws:Raycast() return nil end
 local rooms=node("Folder","CurrentRooms",ws)
 local room=node("Model","1",rooms)
 local door=node("Model","Door",room)
+door.attrs.DoorNumber="A-002"
 local dp=node("Part","Door",door); dp.Position=Vector3.new(10,0,0); dp.CFrame=cf(dp.Position); door.PrimaryPart=dp
 local char=node("Model","PlayerCharacter",ws)
 local hrp=node("Part","HumanoidRootPart",char); char.PrimaryPart=hrp
@@ -171,8 +172,16 @@ ws.DescendantAdded:Fire(drawer); ws.DescendantAdded:Fire(part); ws.DescendantAdd
 ui.TH_Instant:SetValue(true); assert(prompt.HoldDuration==0)
 ui.TH_Interact:SetValue(true); run.Heartbeat:Fire(0.1); assert(fired>0,"Auto interact failed")
 ui.TH_Instant:SetValue(false); assert(prompt.HoldDuration==2,"Prompt hold not restored")
+local generic=node("Model","Door",room)
+local gp=node("Part","Door",generic); generic.PrimaryPart=gp
+local old=node("Model","Door",room); old.attrs.DoorNumber="A-001"
+local op=node("Part","Door",old); old.PrimaryPart=op
+local future=node("Model","Door",room); future.attrs.DoorNumber="A-212"
+local fp=node("Part","Door",future); future.PrimaryPart=fp
+for _,o in ipairs({generic,gp,old,op,future,fp}) do ws.DescendantAdded:Fire(o) end
 ui.TH_DoorESP:SetValue(true); run.Heartbeat:Fire(1)
 assert(#esp.created==1,"Door ESP duplication or missing ESP")
+assert(esp.created[1].settings.Model==door,"ESP selected a generic, old or future door")
 local entity=node("Model","A-60",ws)
 local ep=node("Part","Root",entity); entity.PrimaryPart=ep
 ws.DescendantAdded:Fire(entity); ws.DescendantAdded:Fire(ep)
@@ -182,6 +191,20 @@ run.Heartbeat:Fire(1); run.Heartbeat:Fire(1)
 assert(#library.notes==n+1,"Entity notification missing or repeated")
 local color=Color3.new(0.1,0.2,0.3); ui.TH_DoorColor:SetValue(color); run.Heartbeat:Fire(1)
 assert(esp.created[1].color==color,"ESP color did not update")
+local originalAttribute=player.GetAttribute
+player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-211" end end
+run.Heartbeat:Fire(1)
+assert(esp.created[#esp.created].settings.Model==future and esp.created[1].Deleted,"Next door did not advance to A-212")
+future.attrs.DoorNumber="A-1000"
+player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-999" end end
+run.Heartbeat:Fire(1)
+assert(esp.created[#esp.created].settings.Name=="Next door | A-1000","Four-digit door label failed")
+future.attrs.DoorNumber=nil
+run.Heartbeat:Fire(1)
+assert(esp.created[#esp.created].Deleted,"Generic doors used when next number missing")
+player.GetAttribute=originalAttribute
+run.Heartbeat:Fire(1)
+
 ui.TH_ConfigName:SetValue("test"); buttons["Create config"]()
 assert(files["ThinkingHub/ROOMSRevisited/configs/test.json"],"Config create failed")
 ui.TH_Speed:SetValue(5); buttons["Load config"](); assert(ui.TH_Speed.Value==1000,"Config load failed")
