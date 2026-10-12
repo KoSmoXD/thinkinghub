@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.4.0"
+local VERSION = "1.4.2"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -352,7 +352,8 @@ local function realDoorFor(marker)
         end
     end
 end
-local function computeNextDoor()
+local function computeNextDoor(offset)
+    offset=offset or 1
     if not root then return nil end
     local container=roomContainer()
     local room=currentRoom(container)
@@ -381,10 +382,10 @@ local function computeNextDoor()
                 local model=real or source
                 -- Room_NUM may be a SurfaceGui label: highlight its physical sign/door.
                 while model and model~=WS and not (model:IsA("Model") or model:IsA("BasePart")) do model=model.Parent end
-                if model and model~=WS and model~=room and number==current+1 then
+                if model and model~=WS and model~=room and number==current+offset then
                     local owner=roomOf(model,container)
                     local connected=not room or model:IsDescendantOf(room)
-                        or (owner and roomNumber(owner.Name)==current+1)
+                        or (owner and roomNumber(owner.Name) and roomNumber(owner.Name)>=current and roomNumber(owner.Name)<=current+offset)
                     if connected then
                         local part
                         if model.Parent==container and model:IsA("Model") then
@@ -557,7 +558,8 @@ local function plan()
                 blockedConnection=path.Blocked:Connect(function(index)
                     if route and index>=route.index then resetRoute() end
                 end)
-                showPath(points)
+                local shown,visualError=pcall(showPath,points)
+                if not shown then print("[ThinkingHub path visual] "..tostring(visualError)) end
                 status("Pathfind: "..item.kind.." - "..item.model.Name)
                 return
             end
@@ -671,9 +673,16 @@ end
 local function refreshESP()
     local wanted,seen,list={},{},{}
     local selected=nextDoor()
-    local count={Door=selected and 1 or 0,Bucks=0,Entities=0,Locker=0}
-    if selected and state.DoorESP and ESP then
-        list[#list+1]={model=selected.model,kind="Door",distance=-1,label=string.format("Next door | A-%03d",selected.number)}
+    local second=state.DoorESP and computeNextDoor(2) or nil
+    local count={Door=(selected and 1 or 0)+(second and 1 or 0),Bucks=0,Entities=0,Locker=0}
+    for index=1,2 do
+        local door
+        if index==1 then door=selected else door=second end
+        if door and state.DoorESP and ESP and not seen[door.model] then
+            seen[door.model]=true
+            list[#list+1]={model=door.model,kind="Door",distance=index-3,
+                label=string.format("Next door %d | A-%03d",index,door.number)}
+        end
     end
     for o in pairs(visualObjects) do
         if o.Parent then
@@ -722,6 +731,17 @@ local function refreshESP()
     end
     for o in pairs(espObjects) do if not wanted[o] then destroyESP(o) end end
     if detectionLabel then detectionLabel:SetText(string.format("Detected: %d doors | %d bucks | %d entities | %d lockers",count.Door,count.Bucks,count.Entities,count.Locker)) end
+end
+-- Visual errors retry separately; never reset Auto Floor's route.
+local espRetryAt=0
+local function safeRefreshESP()
+    if lookupClock<espRetryAt then return end
+    local ok,reason=pcall(refreshESP)
+    if not ok then
+        espRetryAt=lookupClock+3
+        if detectionLabel then pcall(function() detectionLabel:SetText("ESP retrying; Auto Floor continues.") end) end
+        print("[ThinkingHub ESP] "..tostring(reason))
+    end
 end
 local function restoreFOV()
     for camera,value in pairs(savedFOV) do
@@ -811,7 +831,7 @@ end)
 addToggle(playerBox,"Interact","Auto interact (drawers / money)")
 playerBox:AddLabel("Loop speed reapplies WalkSpeed each frame. Auto interact uses nearby prompts and click detectors.",true)
 for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"},{"Locker","Locker"}}) do
-    addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Next door ESP" or entry[2].." ESP")
+    addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Next 2 doors ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
 addToggle(cameraBox,"LoopFOV","Loop FOV",function(v) if not v then restoreFOV() end end)
@@ -848,7 +868,7 @@ end
 detection:AddLabel("Comma-separated instance names. Case, spaces and hyphens are ignored.",true)
 detection:AddButton({Text="Rescan",Func=function()
     for _,o in ipairs(WS:GetDescendants()) do register(o) end
-    refreshESP(); resetRoute(); notify("Detection refreshed.")
+    safeRefreshESP(); resetRoute(); notify("Detection refreshed.")
 end})
 detection:AddButton({Text="Copy interaction diagnostics",Func=function()
     local rows={"Thinking Hub "..VERSION,
@@ -987,7 +1007,7 @@ connect(RS.Heartbeat,function(dt)
         scanElapsed=scanElapsed+dt
         if scanElapsed>=1 then
             scanElapsed=0
-            if state.DoorESP or state.BucksESP or state.EntitiesESP or state.LockerESP or state.Notify or next(espObjects) then refreshESP() end
+            if state.DoorESP or state.BucksESP or state.EntitiesESP or state.LockerESP or state.Notify or next(espObjects) then safeRefreshESP() end
         end
         if not root or not humanoid or humanoid.Health<=0 then
             if state.AutoFloor then status("Waiting for character...") end
@@ -1075,3 +1095,4 @@ if not ESP then notify("MSESP could not load. ESP is unavailable; other controls
 if type(fireproximityprompt)~="function" then notify("Prompt automation unavailable: fireproximityprompt is missing.") end
 notify("Thinking Hub loaded | Mr H - Owner")
 return env.ThinkingHub
+

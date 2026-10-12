@@ -254,7 +254,7 @@ assert(esp.created[#esp.created].settings.Model==future and esp.created[1].Delet
 future.attrs.DoorNumber="A-1000"
 player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-999" end end
 run.Heartbeat:Fire(1)
-assert(esp.created[#esp.created].settings.Name=="Next door | A-1000","Four-digit door label failed")
+assert(esp.created[#esp.created].settings.Name=="Next door 1 | A-1000","Four-digit door label failed")
 future.attrs.DoorNumber=nil
 run.Heartbeat:Fire(1)
 assert(esp.created[#esp.created].Deleted,"Generic doors used when next number missing")
@@ -320,6 +320,28 @@ camera.CameraType=2; render("CameraBefore"); render("CameraCapture")
 local scripted=cf(Vector3.new(4,0,0)); camera.CFrame=scripted; render(""); assert(camera.CFrame==scripted,"Scripted camera overwritten")
 ui.TH_NoShake:SetValue(false); assert(hum.CameraOffset.Y==1,"CameraOffset not restored")
 ui.TH_LoopFOV:SetValue(true); render("")
+local secondDoor=node("Model","DOORMODEL_REAL",room); secondDoor.attrs.DoorNumber="A-003"
+local secondMesh=node("MeshPart","DoorMesh",secondDoor); secondDoor.PrimaryPart=secondMesh
+secondMesh.Position=Vector3.new(20,0,0); secondMesh.CFrame=cf(secondMesh.Position)
+ws.DescendantAdded:Fire(secondDoor); ws.DescendantAdded:Fire(secondMesh)
+ui.TH_BucksESP:SetValue(false); run.Heartbeat:Fire(1)
+local firstLabel,secondLabel
+for _,e in ipairs(esp.created) do
+    if not e.Deleted and e.settings.Model==door then firstLabel=e end
+    if not e.Deleted and e.settings.Model==secondDoor then secondLabel=e end
+end
+assert(firstLabel and secondLabel,"Next two doors were not displayed")
+assert(secondLabel.settings.Name=="Next door 2 | A-003","Second label incorrect")
+local originalColorUpdate=firstLabel.SetEveryColor
+firstLabel.SetEveryColor=function() error("simulated ESP update failure") end
+ui.TH_DoorColor:SetValue(Color3.new(0.9,0.8,0.7))
+hrp.Position=Vector3.zero
+ui.TH_Method:SetValue("Pathfind"); ui.TH_AutoFloor:SetValue(true)
+run.Heartbeat:Fire(1); run.Heartbeat:Fire(0.1)
+run.bindings["ThinkingHub_test-guid"](0.016)
+assert(ui.TH_AutoFloor.Value and hum.lastMove.X>0,"ESP failure stopped Auto Floor")
+firstLabel.SetEveryColor=originalColorUpdate
+ui.TH_AutoFloor:SetValue(false)
 hub.Unload(); hub.Unload()
 assert(camera.FieldOfView==70,"FOV not restored on unload")
 assert(hum.WalkSpeed==16 and prompt.HoldDuration==2,"Unload restore failed")
@@ -327,3 +349,4 @@ assert(not next(run.bindings),"Render callback leaked")
 for _,c in ipairs(run.Heartbeat.listeners) do assert(not c.c.Connected,"Heartbeat leaked") end
 assert(esp.created[1].Deleted,"ESP leaked")
 print("PASS: bootstrap, speed restore, Pathfind movement, TP, interaction, ESP colors, config CRUD, name validation, idempotent unload")
+
