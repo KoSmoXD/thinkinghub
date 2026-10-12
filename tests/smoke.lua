@@ -54,6 +54,11 @@ local function node(class,name,parent)
     end
     o.FindFirstChildOfClass=o.FindFirstChildWhichIsA
     function o:GetAttribute(k) return self.attrs[k] end
+    function o:GetPropertyChangedSignal(k)
+        self.propertySignals=self.propertySignals or {}
+        self.propertySignals[k]=self.propertySignals[k] or signal()
+        return self.propertySignals[k]
+    end
     function o:IsDescendantOf(p) local v=self.Parent; while v do if v==p then return true end; v=v.Parent end; return false end
     function o:GetPivot() return cf(self.PrimaryPart and self.PrimaryPart.Position or self.Position) end
     function o:PivotTo(v) self.PrimaryPart.Position=v.Position end
@@ -129,7 +134,12 @@ local encoded={}; local serial=0
 local http={GenerateGUID=function() return "test-guid" end}
 function http:JSONEncode(v) serial=serial+1; local key="json-"..serial; encoded[key]=v; return key end
 function http:JSONDecode(v) assert(encoded[v],"bad json"); return encoded[v] end
-local services={Players=players,Workspace=ws,RunService=run,PathfindingService=pf,HttpService=http,
+local lighting=node("Lighting","Lighting",ws); lighting.ChildAdded=signal()
+lighting.Brightness=0.5; lighting.ClockTime=0; lighting.GlobalShadows=true
+lighting.Ambient=Color3.new(0,0,0); lighting.OutdoorAmbient=Color3.new(0,0,0); lighting.ExposureCompensation=-1
+lighting.FogStart=10; lighting.FogEnd=100
+local atmosphere=node("Atmosphere","Atmosphere",lighting); atmosphere.Density=0.4; atmosphere.Haze=2; atmosphere.Glare=1
+local services={Lighting=lighting,Players=players,Workspace=ws,RunService=run,PathfindingService=pf,HttpService=http,
     SoundService=node("SoundService"),ProximityPromptService={PromptShown=signal()}}
 local keyDown,keyEvents=false,0
 services.VirtualInputManager={SendKeyEvent=function(_,down,key)
@@ -368,7 +378,18 @@ label.Text="A-002"
 
 firstLabel.SetEveryColor=originalColorUpdate
 ui.TH_AutoFloor:SetValue(false)
+ui.TH_Fullbright:SetValue(true); ui.TH_NoFog:SetValue(true)
+assert(lighting.Brightness==2 and not lighting.GlobalShadows and atmosphere.Density==0,"Lighting controls not applied")
+lighting.Brightness=0; lighting:GetPropertyChangedSignal("Brightness"):Fire(); assert(lighting.Brightness==2,"Fullbright did not persist")
+local newAtmosphere=node("Atmosphere","Replacement",lighting); newAtmosphere.Density=0.6; newAtmosphere.Haze=3; newAtmosphere.Glare=2
+lighting.ChildAdded:Fire(newAtmosphere); assert(newAtmosphere.Density==0,"New atmosphere not cleared")
+ui.TH_Fullbright:SetValue(false)
+assert(lighting.Brightness==0.5 and lighting.GlobalShadows and lighting.FogEnd==100000,"Fullbright restore interfered with No Fog")
+ui.TH_NoFog:SetValue(false)
+assert(lighting.FogStart==10 and lighting.FogEnd==100 and atmosphere.Density==0.4 and newAtmosphere.Density==0.6,"Fog was not restored")
+ui.TH_Fullbright:SetValue(true); ui.TH_NoFog:SetValue(true)
 hub.Unload(); hub.Unload()
+assert(lighting.Brightness==0.5 and lighting.FogEnd==100 and newAtmosphere.Haze==3,"Lighting not restored on unload")
 assert(camera.FieldOfView==70,"FOV not restored on unload")
 assert(hum.WalkSpeed==16 and prompt.HoldDuration==2,"Unload restore failed")
 assert(not next(run.bindings),"Render callback leaked")

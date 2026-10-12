@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.4.4"
+local VERSION = "1.4.5"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -55,7 +55,7 @@ local savedFOV, savedOffsets = {}, {}
 local cameraFrame, frameCamera
 local renderName = "ThinkingHub_" .. HTTP:GenerateGUID(false)
 local state = {
-    LoopFOV=false, FOV=70, NoShake=false,
+    Fullbright=false, NoFog=false, LoopFOV=false, FOV=70, NoShake=false,
     SpeedEnabled=false, Speed=40, Instant=false, Interact=false,
     DoorESP=false, BucksESP=false, EntitiesESP=false, LockerESP=false, Notify=false,
     AutoFloor=false, Method="Pathfind", AutoLocker=false, AutoLoot=false, AutoLook=false, Smooth=true,
@@ -785,6 +785,47 @@ local function restoreOffsets()
     end
     savedOffsets={}; cameraFrame=nil; frameCamera=nil
 end
+local Lighting=game:GetService("Lighting")
+local lightEffects={Fullbright={saved={},connections={}},NoFog={saved={},connections={}}}
+local function stopLightEffect(key)
+    local effect=lightEffects[key]
+    for _,c in ipairs(effect.connections) do c:Disconnect() end
+    effect.connections={}
+    for object,properties in pairs(effect.saved) do
+        if object.Parent then
+            for property,value in pairs(properties) do pcall(function() object[property]=value end) end
+        end
+    end
+    effect.saved={}
+end
+local function forceLightProperties(key,object,properties)
+    local effect=lightEffects[key]
+    if effect.saved[object] then return end
+    local saved={}; effect.saved[object]=saved
+    for property,value in pairs(properties) do
+        saved[property]=object[property]
+        object[property]=value
+        effect.connections[#effect.connections+1]=object:GetPropertyChangedSignal(property):Connect(function()
+            if not closed and state[key] and object.Parent and object[property]~=value then object[property]=value end
+        end)
+    end
+end
+local function setLightEffect(key,enabled)
+    stopLightEffect(key)
+    if not enabled then return end
+    if key=="Fullbright" then
+        forceLightProperties(key,Lighting,{Brightness=2,ClockTime=14,GlobalShadows=false,
+            Ambient=Color3.new(1,1,1),OutdoorAmbient=Color3.new(1,1,1),ExposureCompensation=0})
+    else
+        forceLightProperties(key,Lighting,{FogStart=100000,FogEnd=100000})
+        local function atmosphere(object)
+            if object:IsA("Atmosphere") then forceLightProperties(key,object,{Density=0,Haze=0,Glare=0}) end
+        end
+        for _,object in ipairs(Lighting:GetChildren()) do atmosphere(object) end
+        local effect=lightEffects[key]
+        effect.connections[#effect.connections+1]=Lighting.ChildAdded:Connect(atmosphere)
+    end
+end
 local function cleanup()
     if closed then return end
     closed=true; state.AutoFloor=false; resetRoute(); restoreSpeed(); restoreHolds()
@@ -792,6 +833,7 @@ local function cleanup()
     RS:UnbindFromRenderStep(renderName.."CameraBefore")
     RS:UnbindFromRenderStep(renderName.."CameraCapture")
     restoreFOV(); restoreOffsets()
+    stopLightEffect("Fullbright"); stopLightEffect("NoFog")
     for _,c in ipairs(connections) do c:Disconnect() end
     for o in pairs(espObjects) do destroyESP(o) end
     sound:Destroy()
@@ -859,6 +901,7 @@ local visuals=Visual:AddLeftTabbox()
 local espBox=visuals:AddTab("ESP")
 local notifyBox=visuals:AddTab("Notify")
 local cameraBox=visuals:AddTab("Camera")
+local lightingBox=visuals:AddTab("Lighting")
 local Floor=Window:AddTab("Floor","route")
 local floorTabs=Floor:AddLeftTabbox()
 local auto=floorTabs:AddTab("Auto Floor")
@@ -899,6 +942,8 @@ for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"}
     addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Door ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
+addToggle(lightingBox,"Fullbright","Fullbright",function(v) setLightEffect("Fullbright",v) end)
+addToggle(lightingBox,"NoFog","No Fog",function(v) setLightEffect("NoFog",v) end)
 addToggle(cameraBox,"LoopFOV","Loop FOV",function(v) if not v then restoreFOV() end end)
 local fov=cameraBox:AddSlider("TH_FOV",{Text="Field of view",Default=70,Min=1,Max=120,Rounding=0})
 controls.FOV=fov; configControls.FOV={control=fov,kind="number",min=1,max=120}
