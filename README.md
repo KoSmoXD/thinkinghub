@@ -92,3 +92,7 @@ Door ESP and Auto Floor share one selector. It requires the current room number 
 ## Interaction detection (v1.2.1)
 
 Money ESP also resolves pickup prompts labeled Bucks / Cash / Money or `$25`-style amounts, including anonymous pickup parts inside drawers. Numbered drawer names such as `Drawer_1` are recognized. If interactions still fail, stand beside a drawer or money pickup, choose **Floor > Detection > Copy interaction diagnostics**, and share the copied report. It includes nearby interaction classes, instance paths, labels, ranges and available interaction functions, so a custom game adapter can be written from actual evidence.
+
+## Dex Room_NUM mapping (v1.2.2)
+
+The next-door detector accepts a literal `Room_NUM` object with an `A-###` text sign / number value, as well as numbered names such as `Room_212`. GUI markers resolve to their physical sign/door. `Room_###` room containers resolve to an entrance part instead of highlighting the entire room. Both ESP and navigation use this mapping.

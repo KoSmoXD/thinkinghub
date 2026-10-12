@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.2.1"
+local VERSION = "1.2.2"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -145,7 +145,7 @@ local function roomNumber(value)
     if type(value)=="number" then return value>=0 and value%1==0 and value or nil end
     if type(value)~="string" then return nil end
     local text=value:match("^%s*(.-)%s*$"):upper()
-    local digits=text:match("^A[%s_%-]*(%d+)$") or text:match("^(%d+)$")
+    local digits=text:match("^ROOM[%s_%-]+(%d+)$") or text:match("^A[%s_%-]*(%d+)$") or text:match("^(%d+)$")
     return digits and tonumber(digits) or nil
 end
 local function currentRoom(container)
@@ -202,7 +202,7 @@ end
 local function register(o)
     if o:IsA("ProximityPrompt") then prompts[o]=true; instant(o)
     elseif o:IsA("ClickDetector") then clicks[o]=true
-    elseif o:IsA("Model") or o:IsA("BasePart") then objects[o]=true end
+    elseif o:IsA("Model") or o:IsA("BasePart") or normalize(o.Name)=="roomnum" then objects[o]=true end
 end
 local sound=Instance.new("Sound")
 sound.Name="ThinkingHubNotify"; sound.Volume=0.75; sound.Parent=SoundService
@@ -285,7 +285,9 @@ local function doorPart(o)
     return o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart",true)
 end
 local function doorNumber(model)
-    for _,key in ipairs({"DestinationRoom","NextRoom","DoorNumber","RoomNumber"}) do
+    if model:IsA("TextLabel") or model:IsA("TextButton") then return roomNumber(model.Text) end
+    if model:IsA("StringValue") or model:IsA("IntValue") or model:IsA("NumberValue") then return roomNumber(model.Value) end
+    for _,key in ipairs({"DestinationRoom","NextRoom","DoorNumber","RoomNumber","Room_NUM","Number","Num"}) do
         local n=roomNumber(model:GetAttribute(key))
         if n then return n end
     end
@@ -298,7 +300,7 @@ local function doorNumber(model)
             if n then return n end
         elseif child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
             local key=normalize(child.Name)
-            if key=="doornumber" or key=="roomnumber" or key=="nextroom" then
+            if key=="doornumber" or key=="roomnumber" or key=="nextroom" or key=="roomnum" then
                 n=roomNumber(child.Value)
                 if n then return n end
             end
@@ -318,16 +320,27 @@ local function nextDoor()
         if o.Parent and not isPlayerObject(o) then
             local kind=classify(o)
             local numbered=roomNumber(o.Name)
-            local explicit=kind=="Door" or (numbered and o:IsA("Model") and o:FindFirstChild("Door"))
+            local marker=normalize(o.Name)=="roomnum" or o.Name:upper():match("^ROOM[_%- ]+%d+$")~=nil
+            local explicit=marker or kind=="Door" or (numbered and o:IsA("Model") and o:FindFirstChild("Door"))
             if explicit then
-                local model=kind=="Door" and canonical(o,"Door") or o
-                if not seen[model] and model~=room and (not container or model.Parent~=container) then
-                    seen[model]=true
-                    local number=doorNumber(model)
-                    -- A numbered sign / destination is mandatory. Generic doors never qualify.
-                    if number and (not current or number==current+1) and (not room or model:IsDescendantOf(room)) then
-                        local part=doorPart(model)
-                        if part then
+                local source=kind=="Door" and canonical(o,"Door") or o
+                local number=doorNumber(source)
+                local model=source
+                -- Room_NUM may be a SurfaceGui label: highlight its physical sign/door.
+                while model and model~=WS and not (model:IsA("Model") or model:IsA("BasePart")) do model=model.Parent end
+                if model and model~=WS and model~=room and number==current+1 then
+                    local owner=roomOf(model,container)
+                    local connected=not room or model:IsDescendantOf(room)
+                        or (owner and roomNumber(owner.Name)==current+1)
+                    if connected then
+                        local part
+                        if model.Parent==container and model:IsA("Model") then
+                            -- A numbered room container is not itself a door.
+                            local entrance=model:FindFirstChild("RoomEntrance",true) or model:FindFirstChild("Entrance",true)
+                            if entrance and entrance:IsA("BasePart") then part=entrance; model=entrance end
+                        else part=doorPart(model) end
+                        if part and not seen[model] then
+                            seen[model]=true
                             local distance=(part.Position-root.Position).Magnitude
                             if not score or distance<score then
                                 best={model=model,part=part,number=number,room=room}; score=distance

@@ -203,6 +203,19 @@ assert(foundCash,"Prompt-only cash did not receive Bucks ESP")
 ui.TH_BucksESP:SetValue(false); run.Heartbeat:Fire(1)
 local color=Color3.new(0.1,0.2,0.3); ui.TH_DoorColor:SetValue(color); run.Heartbeat:Fire(1)
 assert(esp.created[1].color==color,"ESP color did not update")
+-- Literal Dex marker name with a SurfaceGui number, no Door aliases.
+door.attrs.DoorNumber=nil
+door.Name="ExitAssembly"; dp.Name="Slab"
+local sign=node("Part","Room_NUM",door); sign.Position=dp.Position; sign.CFrame=dp.CFrame
+local label=node("TextLabel","Number",sign); label.Text="A-002"
+ws.DescendantAdded:Fire(sign)
+run.Heartbeat:Fire(1)
+assert(esp.created[#esp.created].settings.Model==sign,"Literal Room_NUM sign not selected")
+-- Numeric suffix variant also works without a text label.
+sign.Name="Room_2"; label.Text=""
+run.Heartbeat:Fire(1)
+assert(not esp.created[#esp.created].Deleted,"Room_2 suffix not selected")
+sign.Name="Room_NUM"; label.Text="A-002"
 local originalAttribute=player.GetAttribute
 player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-211" end end
 run.Heartbeat:Fire(1)
