@@ -40,7 +40,7 @@ Enum={RaycastFilterType={Exclude=1},PathStatus={Success=1},PathWaypointAction={J
 local function node(class,name,parent)
     local o={ClassName=class,Name=name or class,Parent=parent,children={},attrs={},Position=Vector3.zero,CFrame=cf(Vector3.zero),Size=Vector3.new(2,2,2)}
     if parent then parent.children[#parent.children+1]=o end
-    function o:IsA(c) return self.ClassName==c or (c=="BasePart" and self.ClassName=="Part") end
+    function o:IsA(c) return self.ClassName==c or (c=="BasePart" and (self.ClassName=="Part" or self.ClassName=="MeshPart")) end
     function o:GetChildren() return self.children end
     function o:GetDescendants()
         local out={}; for _,v in ipairs(self.children) do out[#out+1]=v; for _,d in ipairs(v:GetDescendants()) do out[#out+1]=d end end
@@ -216,6 +216,20 @@ sign.Name="Room_2"; label.Text=""
 run.Heartbeat:Fire(1)
 assert(not esp.created[#esp.created].Deleted,"Room_2 suffix not selected")
 sign.Name="Room_NUM"; label.Text="A-002"
+-- Real mesh model takes precedence over its number sign.
+door.Name="DOORMODEL_REAL"; dp.ClassName="MeshPart"; dp.Name="DoorMesh"
+run.Heartbeat:Fire(1)
+assert(esp.created[#esp.created].settings.Model==door,"DOORMODEL_REAL not used for ESP")
+local locker=node("Model","Locker",room)
+local lockerMesh=node("Part","Locker",locker); locker.PrimaryPart=lockerMesh
+ws.DescendantAdded:Fire(locker); ws.DescendantAdded:Fire(lockerMesh)
+ui.TH_LockerESP:SetValue(true); run.Heartbeat:Fire(1)
+local lockerEntries=0; local lockerESP
+for _,e in ipairs(esp.created) do if e.settings.Model==locker and not e.Deleted then lockerEntries=lockerEntries+1; lockerESP=e end end
+assert(lockerEntries==1,"Locker ESP missing or duplicated")
+local lockerColor=Color3.new(1,0,0); ui.TH_LockerColor:SetValue(lockerColor); run.Heartbeat:Fire(1)
+assert(lockerESP.color==lockerColor,"Locker color did not update")
+ui.TH_LockerESP:SetValue(false); run.Heartbeat:Fire(1); assert(lockerESP.Deleted,"Locker ESP not removed")
 local originalAttribute=player.GetAttribute
 player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-211" end end
 run.Heartbeat:Fire(1)

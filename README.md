@@ -96,3 +96,9 @@ Money ESP also resolves pickup prompts labeled Bucks / Cash / Money or `$25`-sty
 ## Dex Room_NUM mapping (v1.2.2)
 
 The next-door detector accepts a literal `Room_NUM` object with an `A-###` text sign / number value, as well as numbered names such as `Room_212`. GUI markers resolve to their physical sign/door. `Room_###` room containers resolve to an entrance part instead of highlighting the entire room. Both ESP and navigation use this mapping.
+
+## Locker ESP and actual door model (v1.3.0)
+
+**Visual > ESP > Locker ESP** highlights loaded `Locker` models/parts with its own color picker; both settings persist in configs. Nested locker parts are deduplicated.
+
+Next-door detection now recognizes the actual `DOORMODEL_REAL` model, pairs it with its `Room_NUM` sign (inside the model or directly beside it), and uses its Door / DoorMesh / MeshPart as the path target. ESP attaches to the real door model instead of the number sign when available. It still selects only the next numbered door.

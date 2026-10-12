@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.2.2"
+local VERSION = "1.3.0"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -37,11 +37,11 @@ local renderName = "ThinkingHub_" .. HTTP:GenerateGUID(false)
 local state = {
     LoopFOV=false, FOV=70, NoShake=false,
     SpeedEnabled=false, Speed=40, Instant=false, Interact=false,
-    DoorESP=false, BucksESP=false, EntitiesESP=false, Notify=false,
+    DoorESP=false, BucksESP=false, EntitiesESP=false, LockerESP=false, Notify=false,
     AutoFloor=false, Method="Pathfind", AutoLoot=false, AutoLook=false, Smooth=true,
     PathColor=Color3.fromRGB(80, 230, 190), DoorColor=Color3.fromRGB(80, 200, 255),
-    BucksColor=Color3.fromRGB(255, 215, 70), EntitiesColor=Color3.fromRGB(255, 80, 90),
-    Sound="", RoomsPath="", DoorNames="Door,ExitDoor,RoomDoor,RoomExit,Exit",
+    LockerColor=Color3.fromRGB(170, 130, 255), BucksColor=Color3.fromRGB(255, 215, 70), EntitiesColor=Color3.fromRGB(255, 80, 90),
+    Sound="", RoomsPath="", DoorNames="DOORMODEL_REAL,Door,ExitDoor,RoomDoor,RoomExit,Exit",
     BucksNames="Bucks,Buck,Money,Cash,MoneyPile,BucksPickup,CashPickup",
     DrawerNames="Drawer,Drawers,DrawerContainer",
     EntityNames="A60,A60b,A70,A90,A90b,A200,A25,MultiMonster,MultiBounder,Paralysis,Sensation",
@@ -93,7 +93,8 @@ local function classify(o)
     if names.Entities[n] or o:GetAttribute("IsEntity")==true then return "Entities" end
     if names.Bucks[n] or n:match("^bucks?%d+$") or n:match("^money%d+$") or n:match("^cash%d+$") then return "Bucks" end
     if names.Drawer[n] or n:match("^drawer%d+$") then return "Drawer" end
-    if names.Door[n] then return "Door" end
+    if n=="locker" or n:match("^locker%d+$") then return "Locker" end
+    if n=="doormodelreal" or names.Door[n] then return "Door" end
 end
 local function canonical(o, kind)
     local chosen=o
@@ -280,9 +281,15 @@ local function ground(point)
 end
 local function doorPart(o)
     if o:IsA("BasePart") then return o end
-    local exit=o:FindFirstChild("RoomExit",true) or o:FindFirstChild("Door",true)
-    if exit and exit:IsA("BasePart") then return exit end
-    return o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart",true)
+    local mesh
+    for _,child in ipairs(o:GetDescendants()) do
+        if child:IsA("BasePart") then
+            local n=normalize(child.Name)
+            if n=="door" or n=="doormesh" then return child end
+            if child:IsA("MeshPart") and not mesh then mesh=child end
+        end
+    end
+    return mesh or o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart",true)
 end
 local function doorNumber(model)
     if model:IsA("TextLabel") or model:IsA("TextButton") then return roomNumber(model.Text) end
@@ -307,6 +314,20 @@ local function doorNumber(model)
         end
     end
 end
+local function realDoorFor(marker)
+    local ancestor=marker
+    while ancestor and ancestor~=WS do
+        if normalize(ancestor.Name)=="doormodelreal" then return ancestor end
+        ancestor=ancestor.Parent
+    end
+    -- The number sign can be a sibling of the actual door model.
+    local parent=marker.Parent
+    if parent and (normalize(marker.Name)=="roomnum" or marker.Name:upper():match("^ROOM[_%- ]+%d+$")) then
+        for _,sibling in ipairs(parent:GetChildren()) do
+            if normalize(sibling.Name)=="doormodelreal" then return sibling end
+        end
+    end
+end
 local function nextDoor()
     if not root then return nil end
     local container=roomContainer()
@@ -325,7 +346,15 @@ local function nextDoor()
             if explicit then
                 local source=kind=="Door" and canonical(o,"Door") or o
                 local number=doorNumber(source)
-                local model=source
+                local real=realDoorFor(source)
+                if real then
+                    number=number or doorNumber(real)
+                    if not number and real.Parent then
+                        local sign=real.Parent:FindFirstChild("Room_NUM")
+                        if sign then number=doorNumber(sign) end
+                    end
+                end
+                local model=real or source
                 -- Room_NUM may be a SurfaceGui label: highlight its physical sign/door.
                 while model and model~=WS and not (model:IsA("Model") or model:IsA("BasePart")) do model=model.Parent end
                 if model and model~=WS and model~=room and number==current+1 then
@@ -515,7 +544,7 @@ end
 local function refreshESP()
     local wanted,seen,list={},{},{}
     local selected=nextDoor()
-    local count={Door=selected and 1 or 0,Bucks=0,Entities=0}
+    local count={Door=selected and 1 or 0,Bucks=0,Entities=0,Locker=0}
     if selected and state.DoorESP and ESP then
         list[#list+1]={model=selected.model,kind="Door",distance=-1,label=string.format("Next door | A-%03d",selected.number)}
     end
@@ -565,7 +594,7 @@ local function refreshESP()
         end
     end
     for o in pairs(espObjects) do if not wanted[o] then destroyESP(o) end end
-    if detectionLabel then detectionLabel:SetText(string.format("Detected: %d doors | %d bucks | %d entities",count.Door,count.Bucks,count.Entities)) end
+    if detectionLabel then detectionLabel:SetText(string.format("Detected: %d doors | %d bucks | %d entities | %d lockers",count.Door,count.Bucks,count.Entities,count.Locker)) end
 end
 local function restoreFOV()
     for camera,value in pairs(savedFOV) do
@@ -654,7 +683,7 @@ addToggle(playerBox,"Instant","Instant interact",function(v)
 end)
 addToggle(playerBox,"Interact","Auto interact (drawers / money)")
 playerBox:AddLabel("Loop speed reapplies WalkSpeed each frame. Auto interact uses nearby prompts and click detectors.",true)
-for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"}}) do
+for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"},{"Locker","Locker"}}) do
     addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Next door ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
