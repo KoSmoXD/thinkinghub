@@ -34,7 +34,7 @@ Obsidian's main tabs serve as sections, with tabboxes inside them for the reques
 - **Auto loot** prioritizes nearby drawers and bucks in the current room before the door. Without Auto Floor, it only interacts with nearby items. Pickup attempts are bounded; unconfirmed loot is temporarily skipped.
 - **Auto look** faces Auto Floor's current target. Smooth camera interpolates that rotation.
 - **Instant interact** sets prompt hold duration to zero and restores the original values when disabled or unloaded. It does not rewrite game remotes or extend interaction range.
-- Auto Floor does **not** automatically hide, handle screen-only entity events, solve special puzzles, or complete scripted chase events.
+- Enable **Auto Locker** for detected world rushers. Auto Floor does **not** handle screen-only entity events, solve special puzzles, or complete scripted chase events.
 
 ## Configs
 
@@ -102,3 +102,15 @@ The next-door detector accepts a literal `Room_NUM` object with an `A-###` text 
 **Visual > ESP > Locker ESP** highlights loaded `Locker` models/parts with its own color picker; both settings persist in configs. Nested locker parts are deduplicated.
 
 Next-door detection now recognizes the actual `DOORMODEL_REAL` model, pairs it with its `Room_NUM` sign (inside the model or directly beside it), and uses its Door / DoorMesh / MeshPart as the path target. ESP attaches to the real door model instead of the number sign when available. It still selects only the next numbered door.
+
+## Pathfind / ESP performance (v1.3.1)
+
+Door and ESP candidates are indexed when objects appear rather than rescanning all map parts each update. Next-door selection is cached for 0.3 seconds and invalidates on room changes and door streaming. Changing name settings or pressing Rescan rebuilds candidate membership. Auto Look now faces the route waypoint / crossing goal ahead, stops turning when there is no movement goal, and no longer locks onto the door behind the player. Disable **Floor > Auto Floor > Auto look** to keep manual camera control. Live performance still needs checking.
+
+## Auto Floor performance and Auto Locker (v1.4.0)
+
+- Room folder lookups are cached. When player room attributes are unavailable, geometry checks cover only the nearest three room pivots, at most once per 0.75 seconds.
+- One path calculation worker runs at a time, tries at most three candidates per batch, and backs off for two seconds after blocked routes. Path visualization uses at most 65 points without shortening the navigation route. Generated path visuals are excluded from object indexing.
+- **Floor > Auto Floor > Auto Locker (TP / Pathfind)** gives available lockers priority over loot and doors when a recognized world rusher is detected within 300 studs. It checks available prompts and occupancy, confirms hiding using character/player state or locker occupancy, and temporarily skips lockers whose entry is not confirmed.
+- Hiding continues for two seconds after the last threat detection. Automatic exit requires a standard Exit/Leave prompt in the locker; if the game uses a custom exit action, the status asks you to leave manually. Detection does not cover screen-only A-90 or identify every possible mimic model.
+- Mock tests cover forward camera aiming after passing a door, no repeated decoration scans, and confirmed hiding / threat-clear exit in both movement methods. Live game performance and locker state bindings remain unverified.

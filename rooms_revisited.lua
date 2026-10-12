@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.3.0"
+local VERSION = "1.4.0"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -25,9 +25,13 @@ local player = Players.LocalPlayer
 local closed, revision, planning = false, 0, false
 local connections, savedSpeeds, savedHolds = {}, {}, {}
 local objects, prompts, clicks, espObjects = {}, {}, {}, {}
+local doorObjects, visualObjects = {}, {}
+local lookupClock, nextLookupAt, cachedDoor, cachedRoomKey = 0, 0, nil, nil
 local visited, cooldown, notified = {}, {}, {}
 local route, target, movementGoal, pathVisual, blockedConnection
 local retryAt, lastProgress, progressPosition, targetSince = 0, 0, nil, 0
+local danger, hidden, heldLocker, lastDanger, threatScan = false, false, nil, -math.huge, 0
+local cachedContainer, containerUntil, cachedGeometricRoom, roomUntil = nil, 0, nil, 0
 local character, humanoid, root
 local configControls, controls, statusLabel, detectionLabel = {}, {}, nil, nil
 local lastStatus, lastError, soundId = "", nil, ""
@@ -38,7 +42,7 @@ local state = {
     LoopFOV=false, FOV=70, NoShake=false,
     SpeedEnabled=false, Speed=40, Instant=false, Interact=false,
     DoorESP=false, BucksESP=false, EntitiesESP=false, LockerESP=false, Notify=false,
-    AutoFloor=false, Method="Pathfind", AutoLoot=false, AutoLook=false, Smooth=true,
+    AutoFloor=false, Method="Pathfind", AutoLocker=false, AutoLoot=false, AutoLook=false, Smooth=true,
     PathColor=Color3.fromRGB(80, 230, 190), DoorColor=Color3.fromRGB(80, 200, 255),
     LockerColor=Color3.fromRGB(170, 130, 255), BucksColor=Color3.fromRGB(255, 215, 70), EntitiesColor=Color3.fromRGB(255, 80, 90),
     Sound="", RoomsPath="", DoorNames="DOORMODEL_REAL,Door,ExitDoor,RoomDoor,RoomExit,Exit",
@@ -130,9 +134,11 @@ local function roomContainer()
         for segment in path:gmatch("[^./]+") do current=current and current:FindFirstChild(segment) end
         return current
     end
+    if cachedContainer and cachedContainer.Parent and lookupClock<containerUntil then return cachedContainer end
+    containerUntil=lookupClock+2
     for _, n in ipairs({"CurrentRooms","Rooms","GeneratedRooms","ActiveRooms"}) do
         local f=WS:FindFirstChild(n, true)
-        if f then return f end
+        if f then cachedContainer=f; return f end
     end
 end
 local function roomOf(o, container)
@@ -163,17 +169,23 @@ local function currentRoom(container)
         end
     end
     if not root then return nil end
-    -- Prefer the room containing this player over a teammate's LatestRoom.
-    local best, score
+    if cachedGeometricRoom and cachedGeometricRoom.Parent==container and lookupClock<roomUntil then return cachedGeometricRoom end
+    -- Rank by pivot first: bounding every streamed room each route was expensive.
+    local nearby={}
     for _,r in ipairs(container:GetChildren()) do
-        if r:IsA("Model") then
-            local cf,size=r:GetBoundingBox()
-            local p=cf:PointToObjectSpace(root.Position)
-            local d=Vector3.new(math.max(0,math.abs(p.X)-size.X/2),math.max(0,math.abs(p.Y)-size.Y/2),math.max(0,math.abs(p.Z)-size.Z/2)).Magnitude
-            local rank=d*1000+(cf.Position-root.Position).Magnitude
-            if not score or rank<score then best,score=r,rank end
-        end
+        if r:IsA("Model") then nearby[#nearby+1]={model=r,distance=(r:GetPivot().Position-root.Position).Magnitude} end
     end
+    table.sort(nearby,function(a,b) return a.distance<b.distance end)
+    local best,score
+    for i=1,math.min(3,#nearby) do
+        local r=nearby[i].model
+        local cf,size=r:GetBoundingBox()
+        local p=cf:PointToObjectSpace(root.Position)
+        local d=Vector3.new(math.max(0,math.abs(p.X)-size.X/2),math.max(0,math.abs(p.Y)-size.Y/2),math.max(0,math.abs(p.Z)-size.Z/2)).Magnitude
+        local rank=d*1000+(cf.Position-root.Position).Magnitude
+        if not score or rank<score then best,score=r,rank end
+    end
+    cachedGeometricRoom=best; roomUntil=lookupClock+0.75
     return best
 end
 local function clearRoute()
@@ -201,9 +213,17 @@ local function instant(p)
     end
 end
 local function register(o)
+    if pathVisual and (o==pathVisual or o:IsDescendantOf(pathVisual)) then return end
     if o:IsA("ProximityPrompt") then prompts[o]=true; instant(o)
     elseif o:IsA("ClickDetector") then clicks[o]=true
-    elseif o:IsA("Model") or o:IsA("BasePart") or normalize(o.Name)=="roomnum" then objects[o]=true end
+    elseif o:IsA("Model") or o:IsA("BasePart") or normalize(o.Name)=="roomnum" then
+        objects[o]=true
+        local kind=classify(o)
+        visualObjects[o]=(kind=="Bucks" or kind=="Locker" or kind=="Entities") and true or nil
+        doorObjects[o]=(kind=="Door" or normalize(o.Name)=="roomnum"
+            or o.Name:upper():match("^ROOM[_%- ]+%d+$") or o.Name:upper():match("^A[%s_%-]*%d+$")) and true or nil
+        if doorObjects[o] then nextLookupAt=0 end
+    end
 end
 local sound=Instance.new("Sound")
 sound.Name="ThinkingHubNotify"; sound.Volume=0.75; sound.Parent=SoundService
@@ -258,7 +278,11 @@ end
 local function showPath(points)
     pathVisual=Instance.new("Folder"); pathVisual.Name="ThinkingHubPath"; pathVisual.Parent=WS
     local previous
-    for _,p in ipairs(points) do
+    local sampled={}
+    local stride=math.max(1,math.ceil(#points/64))
+    for i=1,#points,stride do sampled[#sampled+1]=points[i] end
+    if sampled[#sampled]~=points[#points] then sampled[#sampled+1]=points[#points] end
+    for _,p in ipairs(sampled) do
         local part=Instance.new("Part")
         part.Anchored=true; part.CanCollide=false; part.CanQuery=false; part.CanTouch=false
         part.Size=Vector3.new(0.1,0.1,0.1); part.Transparency=1; part.Position=p.Position+Vector3.new(0,0.3,0)
@@ -328,7 +352,7 @@ local function realDoorFor(marker)
         end
     end
 end
-local function nextDoor()
+local function computeNextDoor()
     if not root then return nil end
     local container=roomContainer()
     local room=currentRoom(container)
@@ -337,7 +361,7 @@ local function nextDoor()
         or (room and roomNumber(room.Name))
     if not current then return nil end
     local best,score,seen=nil,nil,{}
-    for o in pairs(objects) do
+    for o in pairs(doorObjects) do
         if o.Parent and not isPlayerObject(o) then
             local kind=classify(o)
             local numbered=roomNumber(o.Name)
@@ -382,7 +406,87 @@ local function nextDoor()
     end
     return best
 end
+local function nextDoor()
+    local key=tostring(player:GetAttribute("CurrentRoom"))..":"..tostring(character and character:GetAttribute("CurrentRoom"))
+    if lookupClock>=nextLookupAt or key~=cachedRoomKey or (cachedDoor and not cachedDoor.model.Parent) then
+        cachedDoor=computeNextDoor(); cachedRoomKey=key; nextLookupAt=lookupClock+0.3
+    end
+    return cachedDoor
+end
+local function isHidden()
+    if not character then return false end
+    if character:GetAttribute("Hiding")==true or character:GetAttribute("Hidden")==true
+        or character:GetAttribute("InLocker")==true or player:GetAttribute("Hiding")==true then return true end
+    if heldLocker and heldLocker.Parent then
+        local occupant=heldLocker:FindFirstChild("HiddenPlayer",true) or heldLocker:FindFirstChild("Occupant",true)
+        if occupant and occupant:IsA("ObjectValue") then return occupant.Value==player or occupant.Value==character end
+    end
+    return false
+end
+local function updateDanger()
+    local active=false
+    if state.AutoLocker and state.AutoFloor and root then
+        if lookupClock>=threatScan then
+            threatScan=lookupClock+0.2
+            for o in pairs(visualObjects) do
+                if o.Parent and classify(o)=="Entities" then
+                    local n=normalize(o.Name)
+                    -- Locker mimics and screen-only A-90 encounters are not rushers.
+                    if n~="a70" and n~="a90" and n~="a90b" and n~="paralysis" and n~="sensation" then
+                        local pos=position(o)
+                        if pos and (pos-root.Position).Magnitude<300 then lastDanger=lookupClock; break end
+                    end
+                end
+            end
+        end
+        active=lookupClock-lastDanger<2
+    end
+    if active~=danger then danger=active; resetRoute() end
+    local nowHidden=isHidden()
+    if nowHidden~=hidden then
+        hidden=nowHidden; resetRoute()
+        if not hidden then heldLocker=nil end
+    end
+end
+local function lockerCandidates()
+    local list,seen={},{}
+    for o in pairs(visualObjects) do
+        if o.Parent and classify(o)=="Locker" then
+            local model=canonical(o,"Locker")
+            if not seen[model] then
+                seen[model]=true
+                local occupant=model:FindFirstChild("HiddenPlayer",true) or model:FindFirstChild("Occupant",true)
+                local occupied=model:GetAttribute("Occupied")==true or model:GetAttribute("IsEntity")==true
+                    or (occupant and occupant:IsA("ObjectValue") and occupant.Value~=nil)
+                local prompt=model:FindFirstChild("HidePrompt",true) or model:FindFirstChildWhichIsA("ProximityPrompt",true)
+                if not occupied and prompt and interactionAvailable(prompt)
+                    and (cooldown[model] or 0)<=os.clock() and (cooldown[prompt] or 0)<=os.clock() then
+                    local pos=position(prompt.Parent)
+                    if pos then list[#list+1]={model=model,prompt=prompt,kind="Locker",pos=pos,priority=-1} end
+                end
+            end
+        end
+    end
+    table.sort(list,function(a,b) return (a.pos-root.Position).Magnitude<(b.pos-root.Position).Magnitude end)
+    return list
+end
+local function leaveLocker()
+    movementGoal=nil
+    if danger then status("Auto Locker: hiding until the entity clears."); return end
+    if heldLocker and heldLocker.Parent then
+        for _,p in ipairs(heldLocker:GetDescendants()) do
+            if p:IsA("ProximityPrompt") and p.Enabled then
+                local action=normalize(p.ActionText)
+                if action:find("exit",1,true) or action:find("leave",1,true) then
+                    interact(p); status("Auto Locker: leaving locker..."); return
+                end
+            end
+        end
+    end
+    status("Entity cleared. No exit prompt detected; leave the locker to resume.")
+end
 local function candidates()
+    if state.AutoLocker and danger then return lockerCandidates() end
     local container=roomContainer()
     local room=currentRoom(container)
     local list,seen={},{}
@@ -430,8 +534,9 @@ local function plan()
     local token=revision
     local startRoot=root
     local list=candidates()
-    if #list==0 then status("No numbered next door detected. Waiting for an A-### sign / destination."); retryAt=os.clock()+1; return end
-    for _,item in ipairs(list) do
+    if #list==0 then status(danger and "Auto Locker: no available locker prompt detected." or "No numbered next door detected. Waiting for an A-### sign / destination."); retryAt=os.clock()+1; return end
+    for index,item in ipairs(list) do
+        if index>3 then break end
         if closed or token~=revision or not state.AutoFloor then return end
         local delta=startRoot.Position-item.pos
         local flat=Vector3.new(delta.X,0,delta.Z)
@@ -461,10 +566,11 @@ local function plan()
         if not ok then lastError=tostring(err) end
         cooldown[item.prompt or item.model]=os.clock()+3
     end
-    status("No reachable route. "..(lastError or "Retrying in 1 second.")); retryAt=os.clock()+1
+    status("No reachable route. "..(lastError or "Retrying in 2 seconds.")); retryAt=os.clock()+2
 end
 local function finishTarget(success)
     if target then
+        if target.kind=="Locker" and not success then cooldown[target.model]=os.clock()+5 end
         if target.kind=="Door" and success then visited[target.model]=true
         else cooldown[target.prompt or target.model]=os.clock()+(success and 8 or 3) end
     end
@@ -472,6 +578,7 @@ local function finishTarget(success)
 end
 local function moveController()
     if not state.AutoFloor or not root or not humanoid or humanoid.Health<=0 then return end
+    if hidden then leaveLocker(); return end
     if root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then
         movementGoal=nil; status("Paused: character immobilized or hiding."); return
     end
@@ -483,7 +590,27 @@ local function moveController()
     if not target.model or not target.model:IsDescendantOf(WS) then finishTarget(true); return end
     local now=os.clock()
     if now-targetSince>12 then status("Target timed out; selecting again."); finishTarget(false); return end
-    if target.kind~="Door" and target.prompt then
+    if target.kind=="Locker" then
+        if not danger then resetRoute(); return end
+        if not interactionAvailable(target.prompt) then finishTarget(false); return end
+        local occupant=target.model:FindFirstChild("HiddenPlayer",true) or target.model:FindFirstChild("Occupant",true)
+        if target.model:GetAttribute("Occupied")==true or (occupant and occupant:IsA("ObjectValue") and occupant.Value~=nil) then
+            finishTarget(false); return
+        end
+        if target.phase=="hiding" then
+            movementGoal=nil
+            if now>target.waitUntil then
+                status("Locker entry not confirmed; trying another locker."); finishTarget(false)
+            end
+            return
+        end
+        if interact(target.prompt) then
+            heldLocker=target.model; target.phase="hiding"
+            target.waitUntil=now+math.max(2,target.prompt.HoldDuration+1)
+            movementGoal=nil; status("Auto Locker: waiting for confirmed entry."); return
+        end
+    end
+    if target.kind~="Door" and target.kind~="Locker" and target.prompt then
         if not interactionAvailable(target.prompt) then finishTarget(true); return end
         if target.phase=="collect" then
             movementGoal=nil
@@ -548,7 +675,7 @@ local function refreshESP()
     if selected and state.DoorESP and ESP then
         list[#list+1]={model=selected.model,kind="Door",distance=-1,label=string.format("Next door | A-%03d",selected.number)}
     end
-    for o in pairs(objects) do
+    for o in pairs(visualObjects) do
         if o.Parent then
             local kind=classify(o)
             if kind and kind~="Drawer" and kind~="Door" then
@@ -705,15 +832,18 @@ end)
 local method=auto:AddDropdown("TH_Method",{Text="Method",Values={"TP","Pathfind"},Default="Pathfind",Multi=false})
 controls.Method=method; configControls.Method={control=method,kind="method"}
 method:OnChanged(function(v) state.Method=v; resetRoute() end)
+addToggle(auto,"AutoLocker","Auto Locker (TP / Pathfind)",function()
+    lastDanger=-math.huge; threatScan=0; resetRoute()
+end)
 addToggle(auto,"AutoLoot","Auto loot",resetRoute)
 addToggle(auto,"AutoLook","Auto look")
 addToggle(auto,"Smooth","Smooth camera")
 addColor(auto,"PathColor","Path color")
 auto:AddLabel("Auto loot checks drawers and bucks before doors. With Auto Floor off, it only collects nearby items. Auto look faces the current target.",true)
-auto:AddLabel("Auto Floor does not auto-hide or solve special events. Disable it when manual movement is needed.",true)
+auto:AddLabel("Auto Locker prioritizes hiding over loot and doors. It uses locker prompts and confirms entry. Special events still need manual control.",true)
 addInput(detection,"RoomsPath","Room folder path (blank = detect)",resetRoute)
 for _,item in ipairs({{"DoorNames","Door names"},{"BucksNames","Bucks names"},{"DrawerNames","Drawer names"},{"EntityNames","Entity names"}}) do
-    addInput(detection,item[1],item[2],function() updateNames(); resetRoute(); notified={} end)
+    addInput(detection,item[1],item[2],function() updateNames(); for o in pairs(objects) do register(o) end; nextLookupAt=0; resetRoute(); notified={} end)
 end
 detection:AddLabel("Comma-separated instance names. Case, spaces and hyphens are ignored.",true)
 detection:AddButton({Text="Rescan",Func=function()
@@ -831,6 +961,8 @@ local ok,err=pcall(refreshConfigs); if not ok then notify(err) end
 for _,o in ipairs(WS:GetDescendants()) do register(o) end
 connect(WS.DescendantAdded,register)
 connect(WS.DescendantRemoving,function(o)
+    if doorObjects[o] then nextLookupAt=0 end
+    doorObjects[o]=nil; visualObjects[o]=nil
     objects[o]=nil; prompts[o]=nil; clicks[o]=nil; savedHolds[o]=nil
     cooldown[o]=nil; visited[o]=nil; notified[o]=nil; destroyESP(o)
 end)
@@ -838,12 +970,13 @@ connect(PPS.PromptShown,instant)
 local elapsed,scanElapsed=0,0
 connect(RS.Heartbeat,function(dt)
     if closed then return end
+    lookupClock=lookupClock+dt
     local ok,reason=pcall(function()
         local c=player.Character
         local h=c and c:FindFirstChildOfClass("Humanoid")
         local r=c and c:FindFirstChild("HumanoidRootPart")
         if c~=character or h~=humanoid or r~=root then
-            resetRoute(); restoreSpeed(); character,humanoid,root=c,h,r; visited={}
+            resetRoute(); restoreSpeed(); character,humanoid,root=c,h,r; visited={}; nextLookupAt=0
         end
         if h and h.Health>0 then
             if state.SpeedEnabled or state.AutoFloor then
@@ -852,13 +985,17 @@ connect(RS.Heartbeat,function(dt)
             end
         end
         scanElapsed=scanElapsed+dt
-        if scanElapsed>=1 then scanElapsed=0; refreshESP() end
+        if scanElapsed>=1 then
+            scanElapsed=0
+            if state.DoorESP or state.BucksESP or state.EntitiesESP or state.LockerESP or state.Notify or next(espObjects) then refreshESP() end
+        end
         if not root or not humanoid or humanoid.Health<=0 then
             if state.AutoFloor then status("Waiting for character...") end
             return
         end
         elapsed=elapsed+dt; if elapsed<0.1 then return end; elapsed=0
-        if state.Interact or (state.AutoLoot and not state.AutoFloor) then
+        updateDanger()
+        if not danger and not hidden and (state.Interact or (state.AutoLoot and not state.AutoFloor)) then
             for _,set in ipairs({prompts,clicks}) do
                 for p in pairs(set) do
                     local kind=interactionKind(p)
@@ -867,7 +1004,7 @@ connect(RS.Heartbeat,function(dt)
             end
         end
         moveController()
-        if state.AutoFloor and not target and not planning and os.clock()>=retryAt and not root.Anchored then
+        if state.AutoFloor and not hidden and not target and not planning and os.clock()>=retryAt and not root.Anchored then
             planning=true
             task.spawn(function()
                 local success,problem=pcall(plan)
@@ -914,7 +1051,7 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
     end
     cameraFrame=nil; frameCamera=nil
     if not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then return end
-    if root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then return end
+    if hidden or root.Anchored or humanoid.Sit or humanoid.PlatformStand or character:GetAttribute("Hiding")==true then return end
     if state.Method=="Pathfind" then
         local delta=movementGoal and movementGoal-root.Position or Vector3.zero
         local flat=Vector3.new(delta.X,0,delta.Z)
@@ -922,10 +1059,15 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
     end
     local camera=WS.CurrentCamera
     if state.AutoLook and target and camera then
-        local pos=target.pos+Vector3.new(0,1,0)
-        if (camera.CFrame.Position-pos).Magnitude>0.01 then
-            local cf=CFrame.lookAt(camera.CFrame.Position,pos)
-            camera.CFrame=state.Smooth and camera.CFrame:Lerp(cf,1-math.exp(-10*dt)) or cf
+        -- Follow the route ahead, not the door behind the player after crossing.
+        local goal=state.Method=="Pathfind" and movementGoal or target.goal
+        if goal then
+            local delta=goal-root.Position
+            local heading=Vector3.new(delta.X,0,delta.Z)
+            if heading.Magnitude>2 then
+                local cf=CFrame.lookAt(camera.CFrame.Position,camera.CFrame.Position+heading.Unit)
+                camera.CFrame=state.Smooth and camera.CFrame:Lerp(cf,1-math.exp(-5*dt)) or cf
+            end
         end
     end
 end)

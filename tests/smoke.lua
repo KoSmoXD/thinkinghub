@@ -31,7 +31,7 @@ local function cf(pos)
     function t:Lerp(b) return b end
     return setmetatable(t,{__add=function(a,b) return cf(a.Position+b) end})
 end
-CFrame={lookAt=function(p) return cf(p) end}
+CFrame={lookAt=function(p,target) local c=cf(p); c.lookTarget=target; return c end}
 Color3={new=function(r,g,b) return {R=r,G=g,B=b} end}
 Color3.fromRGB=function(r,g,b) return Color3.new(r/255,g/255,b/255) end
 ColorSequence={new=function(v) return v end}
@@ -156,6 +156,14 @@ ui.TH_AutoFloor:SetValue(true)
 run.Heartbeat:Fire(0.1); run.Heartbeat:Fire(0.1)
 for _,fn in pairs(run.bindings) do fn(0.016) end
 assert(hum.lastMove and hum.lastMove.X>0,"Pathfind did not drive humanoid")
+local followCamera=node("Camera","FollowCamera",ws); followCamera.CameraType=1; followCamera.FieldOfView=70
+ws.CurrentCamera=followCamera
+ui.TH_AutoLook:SetValue(true); ui.TH_Smooth:SetValue(false)
+hrp.Position=Vector3.new(11,0,0); run.Heartbeat:Fire(0.1)
+run.bindings["ThinkingHub_test-guid"](0.016)
+assert(followCamera.CFrame.lookTarget and followCamera.CFrame.lookTarget.X>followCamera.CFrame.Position.X,"Camera turned back toward crossed door")
+ui.TH_AutoLook:SetValue(false); hrp.Position=Vector3.zero
+
 ui.TH_Method:SetValue("TP"); run.Heartbeat:Fire(0.1); run.Heartbeat:Fire(0.1)
 assert(hrp.Position.X>0,"TP did not move character")
 ui.TH_AutoFloor:SetValue(false); assert(hum.WalkSpeed==16)
@@ -182,6 +190,15 @@ for _,o in ipairs({generic,gp,old,op,future,fp}) do ws.DescendantAdded:Fire(o) e
 ui.TH_DoorESP:SetValue(true); run.Heartbeat:Fire(1)
 assert(#esp.created==1,"Door ESP duplication or missing ESP")
 assert(esp.created[1].settings.Model==door,"ESP selected a generic, old or future door")
+local decorationReads=0
+for i=1,200 do
+    local decor=node("Part","Decoration"..i,room)
+    decor.GetAttribute=function() decorationReads=decorationReads+1 end
+    ws.DescendantAdded:Fire(decor)
+end
+decorationReads=0; run.Heartbeat:Fire(1)
+assert(decorationReads==0,"ESP / door lookup rescanned unrelated map parts")
+
 local entity=node("Model","A-60",ws)
 local ep=node("Part","Root",entity); entity.PrimaryPart=ep
 ws.DescendantAdded:Fire(entity); ws.DescendantAdded:Fire(ep)
@@ -217,7 +234,7 @@ run.Heartbeat:Fire(1)
 assert(not esp.created[#esp.created].Deleted,"Room_2 suffix not selected")
 sign.Name="Room_NUM"; label.Text="A-002"
 -- Real mesh model takes precedence over its number sign.
-door.Name="DOORMODEL_REAL"; dp.ClassName="MeshPart"; dp.Name="DoorMesh"
+door.Name="DOORMODEL_REAL"; dp.ClassName="MeshPart"; dp.Name="DoorMesh"; buttons["Rescan"]()
 run.Heartbeat:Fire(1)
 assert(esp.created[#esp.created].settings.Model==door,"DOORMODEL_REAL not used for ESP")
 local locker=node("Model","Locker",room)
@@ -251,6 +268,45 @@ ui.TH_Speed:SetValue(42); buttons["Overwrite config"](); ui.TH_Speed:SetValue(10
 ui.TH_ConfigName:SetValue("../escape"); buttons["Create config"](); assert(not files["ThinkingHub/ROOMSRevisited/configs/../escape.json"])
 buttons["Delete config"](); assert(not next(files),"Config delete failed")
 ui.TH_SpeedEnabled:SetValue(true); ui.TH_Instant:SetValue(true); run.Heartbeat:Fire(0.1)
+-- Auto Locker overrides door routing for both methods, confirms hiding,
+-- waits for the entity to clear, and exits through a standard exit prompt.
+entity.Parent=nil; ws.DescendantRemoving:Fire(entity)
+ui.TH_Interact:SetValue(false); ui.TH_AutoLoot:SetValue(false)
+local originalFire=fireproximityprompt
+for _,methodName in ipairs({"TP","Pathfind"}) do
+    local hazard=node("Model","A60",ws)
+    local hazardPart=node("Part","Root",hazard); hazard.PrimaryPart=hazardPart
+    ws.DescendantAdded:Fire(hazard)
+    local safe=node("Model","Locker",room)
+    local safePart=node("Part","Handle",safe); safe.PrimaryPart=safePart
+    local hidePrompt=node("ProximityPrompt","HidePrompt",safePart)
+    hidePrompt.HoldDuration=0; hidePrompt.Enabled=true; hidePrompt.MaxActivationDistance=30
+    hidePrompt.ActionText="Hide"; hidePrompt.ObjectText="Locker"
+    ws.DescendantAdded:Fire(safe); ws.DescendantAdded:Fire(safePart); ws.DescendantAdded:Fire(hidePrompt)
+    local hiddenCalls=0
+    fireproximityprompt=function(p)
+        if p==hidePrompt then
+            hiddenCalls=hiddenCalls+1
+            char.attrs.Hiding=hidePrompt.ActionText~="Exit"
+        else originalFire(p) end
+    end
+    ui.TH_Method:SetValue(methodName); ui.TH_AutoLocker:SetValue(true); ui.TH_AutoFloor:SetValue(true)
+    run.Heartbeat:Fire(0.2); run.Heartbeat:Fire(0.2); run.Heartbeat:Fire(0.2)
+    assert(char.attrs.Hiding==true and hiddenCalls==1,"Auto Locker did not confirm entry: "..methodName)
+    run.Heartbeat:Fire(0.2); assert(hiddenCalls==1,"Repeated hide request while already hidden")
+    hazard.Parent=nil; ws.DescendantRemoving:Fire(hazard)
+    hidePrompt.ActionText="Exit"
+    -- Clear prompt request cooldown while leaving all controller clocks intact.
+    local start=os.clock(); local realClock=os.clock
+    os.clock=function() return start+10 end
+    run.Heartbeat:Fire(3)
+    assert(char.attrs.Hiding==false,"Auto Locker did not exit when clear: "..methodName)
+    os.clock=realClock
+    ui.TH_AutoFloor:SetValue(false); ui.TH_AutoLocker:SetValue(false)
+    safe.Parent=nil; ws.DescendantRemoving:Fire(safe); ws.DescendantRemoving:Fire(safePart); ws.DescendantRemoving:Fire(hidePrompt)
+    run.Heartbeat:Fire(0.2)
+end
+fireproximityprompt=originalFire
 local camera=node("Camera","Camera",ws); camera.FieldOfView=70; camera.CameraType=1; ws.CurrentCamera=camera
 local function render(name) assert(run.bindings["ThinkingHub_test-guid"..name])() end
 ui.TH_FOV:SetValue(95); ui.TH_LoopFOV:SetValue(true)
