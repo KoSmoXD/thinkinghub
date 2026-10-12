@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.4.3"
+local VERSION = "1.4.4"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -32,6 +32,21 @@ local route, target, movementGoal, pathVisual, blockedConnection
 local retryAt, lastProgress, progressPosition, targetSince = 0, 0, nil, 0
 local danger, hidden, heldLocker, lastDanger, threatScan = false, false, nil, -math.huge, 0
 local exitPulseUntil, exitRetryAt, exitAttempts = 0, 0, 0
+local exitKeyDown=false
+local virtualInput, inputService
+pcall(function() virtualInput=game:GetService("VirtualInputManager") end)
+pcall(function() inputService=game:GetService("UserInputService") end)
+local function releaseExitKey()
+    if not exitKeyDown then return end
+    pcall(function() virtualInput:SendKeyEvent(false,Enum.KeyCode.W,false,game) end)
+    exitKeyDown=false
+end
+local function pressExitKey()
+    if exitKeyDown or not virtualInput then return end
+    if inputService and inputService:GetFocusedTextBox() then return end
+    local ok=pcall(function() virtualInput:SendKeyEvent(true,Enum.KeyCode.W,false,game) end)
+    exitKeyDown=ok
+end
 local cachedContainer, containerUntil, cachedGeometricRoom, roomUntil = nil, 0, nil, 0
 local character, humanoid, root
 local configControls, controls, statusLabel, detectionLabel = {}, {}, nil, nil
@@ -196,6 +211,7 @@ local function clearRoute()
     movementGoal=nil
 end
 local function resetRoute()
+    releaseExitKey()
     revision=revision+1; target=nil; clearRoute(); retryAt=0
     if humanoid and humanoid.Parent then humanoid:Move(Vector3.zero,false) end
 end
@@ -524,7 +540,7 @@ local function candidates()
         end
     end
     local next=nextDoor()
-    if next and not visited[next.model] and (cooldown[next.model] or 0)<=os.clock() then
+    if next and (not visited[next.model] or os.clock()-visited[next.model]>=3) and (cooldown[next.model] or 0)<=os.clock() then
         local model,part=next.model,next.part
         local pos=part.Position
         local normal=Vector3.new(part.CFrame.LookVector.X,0,part.CFrame.LookVector.Z)
@@ -585,7 +601,7 @@ end
 local function finishTarget(success)
     if target then
         if target.kind=="Locker" and not success then cooldown[target.model]=os.clock()+5 end
-        if target.kind=="Door" and success then visited[target.model]=true
+        if target.kind=="Door" and success then visited[target.model]=os.clock()
         else cooldown[target.prompt or target.model]=os.clock()+(success and 8 or 3) end
     end
     resetRoute()
@@ -598,8 +614,10 @@ local function moveController()
     end
     if not target then return end
     if target.kind=="Door" then
-        local selected=nextDoor()
-        if not selected or selected.model~=target.model then resetRoute(); return end
+        -- Once acquired, follow the physical target independently of ESP/sign rescans.
+        local current=roomNumber(player:GetAttribute("CurrentRoom"))
+            or roomNumber(character:GetAttribute("CurrentRoom"))
+        if current and target.number and current>=target.number then finishTarget(true); return end
     end
     if not target.model or not target.model:IsDescendantOf(WS) then finishTarget(true); return end
     local now=os.clock()
@@ -693,7 +711,7 @@ local function refreshESP()
         if door and state.DoorESP and ESP and not seen[door.model] then
             seen[door.model]=true
             list[#list+1]={model=door.model,kind="Door",distance=index-3,
-                label=string.format("Next door %d | A-%03d",index,door.number)}
+                label=string.format("Door A-%03d",door.number)}
         end
     end
     for o in pairs(visualObjects) do
@@ -878,7 +896,7 @@ end)
 addToggle(playerBox,"Interact","Auto interact (drawers / money)")
 playerBox:AddLabel("Loop speed reapplies WalkSpeed each frame. Auto interact uses nearby prompts and click detectors.",true)
 for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"},{"Locker","Locker"}}) do
-    addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Next 2 doors ESP" or entry[2].." ESP")
+    addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Door ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
 addToggle(cameraBox,"LoopFOV","Loop FOV",function(v) if not v then restoreFOV() end end)
@@ -1117,10 +1135,12 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
         end
     end
     cameraFrame=nil; frameCamera=nil
-    if not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then return end
+    if not state.AutoFloor or not humanoid or not root or humanoid.Health<=0 then releaseExitKey(); return end
+    if not hidden then releaseExitKey() end
     if hidden then
         -- Movement input is shared by PC and mobile; no held virtual key needed.
         local requestExit=state.AutoLocker and not danger and lookupClock<exitPulseUntil
+        if requestExit then pressExitKey() else releaseExitKey() end
         humanoid:Move(requestExit and Vector3.new(0,0,-1) or Vector3.zero,true)
         return
     end

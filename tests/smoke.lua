@@ -36,7 +36,7 @@ Color3={new=function(r,g,b) return {R=r,G=g,B=b} end}
 Color3.fromRGB=function(r,g,b) return Color3.new(r/255,g/255,b/255) end
 ColorSequence={new=function(v) return v end}
 RaycastParams={new=function() return {} end}
-Enum={RaycastFilterType={Exclude=1},PathStatus={Success=1},PathWaypointAction={Jump=1},CameraType={Scriptable=2,Custom=1},RenderPriority={Camera={Value=100},Last={Value=200}},KeyCode={RightControl=1}}
+Enum={RaycastFilterType={Exclude=1},PathStatus={Success=1},PathWaypointAction={Jump=1},CameraType={Scriptable=2,Custom=1},RenderPriority={Camera={Value=100},Last={Value=200}},KeyCode={RightControl=1,W=2}}
 local function node(class,name,parent)
     local o={ClassName=class,Name=name or class,Parent=parent,children={},attrs={},Position=Vector3.zero,CFrame=cf(Vector3.zero),Size=Vector3.new(2,2,2)}
     if parent then parent.children[#parent.children+1]=o end
@@ -131,6 +131,13 @@ function http:JSONEncode(v) serial=serial+1; local key="json-"..serial; encoded[
 function http:JSONDecode(v) assert(encoded[v],"bad json"); return encoded[v] end
 local services={Players=players,Workspace=ws,RunService=run,PathfindingService=pf,HttpService=http,
     SoundService=node("SoundService"),ProximityPromptService={PromptShown=signal()}}
+local keyDown,keyEvents=false,0
+services.VirtualInputManager={SendKeyEvent=function(_,down,key)
+    assert(key==Enum.KeyCode.W)
+    keyDown=down; keyEvents=keyEvents+1
+    if down and char.attrs.Hiding then char.attrs.Hiding=false end
+end}
+services.UserInputService={GetFocusedTextBox=function() return nil end}
 game={GetService=function(_,n) assert(services[n],n); return services[n] end,
     HttpGet=function(_,url) return url:find("MSESP",1,true) and "return _G.__testESP" or "return _G.__testLibrary" end}
 local files,folders={},{}
@@ -254,7 +261,7 @@ assert(esp.created[#esp.created].settings.Model==future and esp.created[1].Delet
 future.attrs.DoorNumber="A-1000"
 player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-999" end end
 run.Heartbeat:Fire(1)
-assert(esp.created[#esp.created].settings.Name=="Next door 1 | A-1000","Four-digit door label failed")
+assert(esp.created[#esp.created].settings.Name=="Door A-1000","Four-digit door label failed")
 future.attrs.DoorNumber=nil
 run.Heartbeat:Fire(1)
 assert(esp.created[#esp.created].Deleted,"Generic doors used when next number missing")
@@ -300,7 +307,7 @@ for _,methodName in ipairs({"TP","Pathfind"}) do
     local exitMoves=0
     hum.Move=function(self,v,relative)
         originalMove(self,v)
-        if v.Magnitude>0 and relative then exitMoves=exitMoves+1; char.attrs.Hiding=false end
+        if v.Magnitude>0 and relative then exitMoves=exitMoves+1 end
     end
     run.bindings["ThinkingHub_test-guid"](0.016)
     assert(exitMoves==0,"Movement requested before threat cleared")
@@ -311,6 +318,7 @@ for _,methodName in ipairs({"TP","Pathfind"}) do
     run.bindings["ThinkingHub_test-guid"](0.016)
     assert(char.attrs.Hiding==false and exitMoves==1,"Auto Locker did not move to exit: "..methodName)
     run.Heartbeat:Fire(0.2)
+    assert(not keyDown,"Exit key was not released after leaving")
     hum.Move=originalMove
     os.clock=realClock
     ui.TH_AutoFloor:SetValue(false); ui.TH_AutoLocker:SetValue(false)
@@ -342,7 +350,7 @@ for _,e in ipairs(esp.created) do
     if not e.Deleted and e.settings.Model==secondDoor then secondLabel=e end
 end
 assert(firstLabel and secondLabel,"Next two doors were not displayed")
-assert(secondLabel.settings.Name=="Next door 2 | A-003","Second label incorrect")
+assert(secondLabel.settings.Name=="Door A-003","Second label incorrect")
 local originalColorUpdate=firstLabel.SetEveryColor
 firstLabel.SetEveryColor=function() error("simulated ESP update failure") end
 ui.TH_DoorColor:SetValue(Color3.new(0.9,0.8,0.7))
@@ -351,6 +359,13 @@ ui.TH_Method:SetValue("Pathfind"); ui.TH_AutoFloor:SetValue(true)
 run.Heartbeat:Fire(1); run.Heartbeat:Fire(0.1)
 run.bindings["ThinkingHub_test-guid"](0.016)
 assert(ui.TH_AutoFloor.Value and hum.lastMove.X>0,"ESP failure stopped Auto Floor")
+-- Lose the sign while the physical door and its route remain loaded.
+label.Text=""; door.attrs.DoorNumber=nil
+run.Heartbeat:Fire(1)
+run.bindings["ThinkingHub_test-guid"](0.016)
+assert(ui.TH_AutoFloor.Value and hum.lastMove.X>0,"Temporary sign loss cancelled the physical door route")
+label.Text="A-002"
+
 firstLabel.SetEveryColor=originalColorUpdate
 ui.TH_AutoFloor:SetValue(false)
 hub.Unload(); hub.Unload()

@@ -118,3 +118,9 @@ Door and ESP candidates are indexed when objects appear rather than rescanning a
 ## Movement-based locker exit (v1.4.3)
 
 After the existing threat-clear delay, Auto Locker sends a short camera-relative forward movement request when no Exit/Leave prompt exists. This uses Humanoid movement, shared by PC and mobile, rather than holding a virtual keyboard key. Auto Floor waits for hiding state to clear before resuming. Pulses stop when danger returns or automation is disabled; three unconfirmed attempts produce a status message instead of moving forever. Offline tests cover movement-based exits in both TP and Pathfind. Live input-handler compatibility remains unverified.
+
+## Stable door routes and locker key input (v1.4.4)
+
+The toggle is now **Door ESP**, with labels such as **Door A-212** for both upcoming doors. An acquired door route no longer gets cancelled just because the number-sign / ESP lookup temporarily returns no result. Crossing attempts expire after three seconds if the player's room progress has not advanced, instead of permanently excluding that door.
+
+Locker exit also sends a short W key event through VirtualInputManager when supported, alongside the existing movement request. Key-up is sent on pulse completion, route reset, confirmed exit, disable and unload. No key is pressed while a text box has focus. Availability depends on the client; live exit compatibility remains unverified.
