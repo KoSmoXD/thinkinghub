@@ -431,6 +431,33 @@ local function nextDoor()
     end
     return cachedDoor
 end
+-- Movement can use a physical exit before its number sign streams in.
+-- Keep this separate from ESP's strict numbered-door selection.
+local function movementDoor()
+    local ok, selected = pcall(nextDoor)
+    if ok and selected and selected.part and selected.part.Parent then return selected end
+    local room = currentRoom(roomContainer())
+    if not room or not root then return nil end
+    local current = roomNumber(player:GetAttribute("CurrentRoom"))
+        or roomNumber(character and character:GetAttribute("CurrentRoom"))
+        or roomNumber(room.Name)
+    local candidates, seen = {}, {}
+    for _, model in ipairs(room:GetDescendants()) do
+        if normalize(model.Name)=="doormodelreal" and (model:IsA("Model") or model:IsA("BasePart")) then
+            local part=doorPart(model)
+            local number=doorNumber(model)
+            if part and not seen[part] and (not number or not current or number==current+1) then
+                seen[part]=true
+                candidates[#candidates+1]={model=model,part=part,number=number or (current and current+1),room=room}
+            end
+        end
+    end
+    -- Never guess between multiple unnumbered entrances/exits.
+    if #candidates==1 then return candidates[1] end
+    for _, door in ipairs(candidates) do
+        if current and doorNumber(door.model)==current+1 then return door end
+    end
+end
 local function isHidden()
     if not character then return false end
     if character:GetAttribute("Hiding")==true or character:GetAttribute("Hidden")==true
@@ -539,7 +566,7 @@ local function candidates()
             end
         end
     end
-    local next=nextDoor()
+    local next=movementDoor()
     if next and (not visited[next.model] or os.clock()-visited[next.model]>=3) and (cooldown[next.model] or 0)<=os.clock() then
         local model,part=next.model,next.part
         local pos=part.Position
@@ -563,7 +590,7 @@ local function plan()
     local token=revision
     local startRoot=root
     local list=candidates()
-    if #list==0 then status(danger and "Auto Locker: no available locker prompt detected." or "No numbered next door detected. Waiting for an A-### sign / destination."); retryAt=os.clock()+1; return end
+    if #list==0 then status(danger and "Auto Locker: no available locker prompt detected." or "Waiting for the next physical door to load."); retryAt=os.clock()+1; return end
     for index,item in ipairs(list) do
         if index>3 then break end
         if closed or token~=revision or not state.AutoFloor then return end

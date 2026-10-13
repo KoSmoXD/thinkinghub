@@ -374,6 +374,13 @@ label.Text=""; door.attrs.DoorNumber=nil
 run.Heartbeat:Fire(1)
 run.bindings["ThinkingHub_test-guid"](0.016)
 assert(ui.TH_AutoFloor.Value and hum.lastMove.X>0,"Temporary sign loss cancelled the physical door route")
+-- Acquire a fresh TP route while the sign is missing and ESP still throws.
+ui.TH_AutoFloor:SetValue(false)
+ui.TH_Method:SetValue("TP")
+hrp.Position=Vector3.zero
+ui.TH_AutoFloor:SetValue(true)
+run.Heartbeat:Fire(1); run.Heartbeat:Fire(0.1)
+assert(hrp.Position.X>0,"TP could not acquire a physical door without its ESP sign")
 label.Text="A-002"
 
 firstLabel.SetEveryColor=originalColorUpdate
