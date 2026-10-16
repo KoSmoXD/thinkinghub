@@ -1,9 +1,20 @@
 -- Zinc Hub / Obsidian-compatible adapter for our own ZincUI library.
 -- API bridge: existing features and callbacks stay unchanged.
-local source = game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincUI.lua")
-local compile, reason = loadstring(source, "@ZincHub/ZincUI")
-assert(compile, reason)
-local Zinc = compile()
+-- Load the public standalone library first; keep a local hub mirror for resilience.
+local function loadZinc(url)
+    local fetched, source = pcall(function() return game:HttpGet(url) end)
+    if not fetched or type(source) ~= "string" then return nil end
+    local compile = loadstring(source, "@ZincHub/ZincUI")
+    if not compile then return nil end
+    local ok, library = pcall(compile)
+    if ok and type(library) == "table" and type(library.CreateWindow) == "function" then
+        return library
+    end
+    return nil
+end
+local Zinc = loadZinc("https://raw.githubusercontent.com/KoSmoXD/ZincUI/main/ZincUI.lua")
+    or loadZinc("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincUI.lua")
+assert(Zinc, "ZincAdapter: ZincUI unavailable from public repository and hub mirror")
 local Library = {Options = {}, _window = nil, _onUnload = nil, _unloaded = false}
 
 local function bind(section, id, opts, method, extra)
