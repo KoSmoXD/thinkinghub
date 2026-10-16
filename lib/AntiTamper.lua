@@ -85,12 +85,12 @@ function AntiTamper:Scan()
     if not self.running then return end
     self:CheckOwnGui()
     if self.triggered then return end
-    if self.coreGui then
-        local ok, descendants = pcall(function() return self.coreGui:GetDescendants() end)
+    for _, root in ipairs(self.roots) do
+        local ok, descendants = pcall(function() return root:GetDescendants() end)
         if ok and type(descendants) == "table" then
             for _, object in ipairs(descendants) do
                 self:InspectGui(object)
-                if self.triggered then break end
+                if self.triggered then return end
             end
         end
     end
@@ -113,7 +113,7 @@ function AntiTamper.Start(options)
         evidence = { DEX = {}, RSPY = {} },
         _connections = {},
         _elapsed = 0,
-        coreGui = options.CoreGui,
+        roots = {},
         getOwnGui = options.GetOwnGui,
         onSignal = options.OnSignal,
         onConfirmed = options.OnConfirmed,
@@ -123,17 +123,32 @@ function AntiTamper.Start(options)
     if not logService then
         pcall(function() logService = game:GetService("LogService") end)
     end
-    if not self.coreGui then
-        pcall(function() self.coreGui = game:GetService("CoreGui") end)
+    local roots = options.Roots
+    if type(roots) == "table" then
+        for _, root in ipairs(roots) do
+            if root then self.roots[#self.roots + 1] = root end
+        end
+    end
+    if options.CoreGui then self.roots[#self.roots + 1] = options.CoreGui end
+    if #self.roots == 0 then
+        local ok, core = pcall(function() return game:GetService("CoreGui") end)
+        if ok and core then self.roots[1] = core end
     end
     local runService = options.RunService
     if not runService then
         pcall(function() runService = game:GetService("RunService") end)
     end
-    if self.coreGui then
-        safeConnect(self, self.coreGui.DescendantAdded, function(object)
-            self:InspectGui(object)
-        end)
+    local seen = {}
+    for _, root in ipairs(self.roots) do
+        if not seen[root] then
+            seen[root] = true
+            local ok, signal = pcall(function() return root.DescendantAdded end)
+            if ok then
+                safeConnect(self, signal, function(object)
+                    self:InspectGui(object)
+                end)
+            end
+        end
     end
     if logService then
         safeConnect(self, logService.MessageOut, function(message)
