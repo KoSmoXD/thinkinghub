@@ -57,10 +57,10 @@ local renderName = "ThinkingHub_" .. HTTP:GenerateGUID(false)
 local state = {
     Fullbright=false, NoFog=false, LoopFOV=false, FOV=70, NoShake=false,
     SpeedEnabled=false, Speed=40, Instant=false, Interact=false,
-    DoorESP=false, BucksESP=false, EntitiesESP=false, LockerESP=false, Notify=false,
+    DoorESP=false, BucksESP=false, EntitiesESP=false, LockerESP=false, BadLockerESP=false, Notify=false,
     AutoFloor=false, Method="Pathfind", AutoLocker=false, AutoLoot=false, AutoLook=false, Smooth=true,
     PathColor=Color3.fromRGB(80, 230, 190), DoorColor=Color3.fromRGB(80, 200, 255),
-    LockerColor=Color3.fromRGB(170, 130, 255), BucksColor=Color3.fromRGB(255, 215, 70), EntitiesColor=Color3.fromRGB(255, 80, 90),
+    BadLockerColor=Color3.fromRGB(255, 65, 30), LockerColor=Color3.fromRGB(170, 130, 255), BucksColor=Color3.fromRGB(255, 215, 70), EntitiesColor=Color3.fromRGB(255, 80, 90),
     Sound="", RoomsPath="", DoorNames="DOORMODEL_REAL,Door,ExitDoor,RoomDoor,RoomExit,Exit",
     BucksNames="Bucks,Buck,Money,Cash,MoneyPile,BucksPickup,CashPickup",
     DrawerNames="Drawer,Drawers,DrawerContainer",
@@ -110,6 +110,12 @@ end
 local function classify(o)
     if not (o:IsA("Model") or o:IsA("BasePart")) or isPlayerObject(o) then return nil end
     local n=normalize(o.Name)
+    if n=="a70" then return "BadLocker" end
+    if n=="locker" or n:match("^locker%d+$") then
+        for _,child in ipairs(o:GetDescendants()) do
+            if normalize(child.Name)=="a70" then return "BadLocker" end
+        end
+    end
     if names.Entities[n] or o:GetAttribute("IsEntity")==true then return "Entities" end
     if names.Bucks[n] or n:match("^bucks?%d+$") or n:match("^money%d+$") or n:match("^cash%d+$") then return "Bucks" end
     if names.Drawer[n] or n:match("^drawer%d+$") then return "Drawer" end
@@ -236,7 +242,7 @@ local function register(o)
     elseif o:IsA("Model") or o:IsA("BasePart") or normalize(o.Name)=="roomnum" then
         objects[o]=true
         local kind=classify(o)
-        visualObjects[o]=(kind=="Bucks" or kind=="Locker" or kind=="Entities") and true or nil
+        visualObjects[o]=(kind=="Bucks" or kind=="Locker" or kind=="BadLocker" or kind=="Entities") and true or nil
         doorObjects[o]=(kind=="Door" or normalize(o.Name)=="roomnum"
             or o.Name:upper():match("^ROOM[_%- ]+%d+$") or o.Name:upper():match("^A[%s_%-]*%d+$")) and true or nil
         if doorObjects[o] then nextLookupAt=0 end
@@ -731,7 +737,7 @@ local function refreshESP()
     local wanted,seen,list={},{},{}
     local selected=nextDoor()
     local second=state.DoorESP and computeNextDoor(2) or nil
-    local count={Door=(selected and 1 or 0)+(second and 1 or 0),Bucks=0,Entities=0,Locker=0}
+    local count={Door=(selected and 1 or 0)+(second and 1 or 0),Bucks=0,Entities=0,Locker=0,BadLocker=0}
     for index=1,2 do
         local door
         if index==1 then door=selected else door=second end
@@ -748,12 +754,12 @@ local function refreshESP()
                 local model=canonical(o,kind)
                 if not seen[model] then
                     seen[model]=true; count[kind]=count[kind]+1
-                    if kind=="Entities" and state.Notify and not notified[model] then
+                    if (kind=="Entities" or kind=="BadLocker") and state.Notify and not notified[model] then
                         notified[model]=true; notify("Entity detected: "..model.Name); playSound()
                     end
                     if state[kind.."ESP"] and ESP then
                         local pos=position(model)
-                        if pos then list[#list+1]={model=model,kind=kind,distance=root and (pos-root.Position).Magnitude or 0} end
+                        if pos then list[#list+1]={model=model,kind=kind,label=kind=="BadLocker" and "A-70 | BAD LOCKER" or nil,distance=root and (pos-root.Position).Magnitude or 0} end
                     end
                 end
             end
@@ -965,7 +971,7 @@ addToggle(playerBox,"Instant","Instant interact",function(v)
 end)
 addToggle(playerBox,"Interact","Auto interact (drawers / money)")
 playerBox:AddLabel("Loop speed reapplies WalkSpeed each frame. Auto interact uses nearby prompts and click detectors.",true)
-for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"},{"Locker","Locker"}}) do
+for _,entry in ipairs({{"Door","Door"},{"Bucks","Bucks"},{"Entities","Entities"},{"Locker","Locker"},{"BadLocker","A-70 (bad locker)"}}) do
     addToggle(espBox,entry[1].."ESP",entry[1]=="Door" and "Door ESP" or entry[2].." ESP")
     addColor(espBox,entry[1].."Color",entry[2].." color")
 end
@@ -1144,7 +1150,7 @@ connect(RS.Heartbeat,function(dt)
         scanElapsed=scanElapsed+dt
         if scanElapsed>=1 then
             scanElapsed=0
-            if state.DoorESP or state.BucksESP or state.EntitiesESP or state.LockerESP or state.Notify or next(espObjects) then safeRefreshESP() end
+            if state.DoorESP or state.BucksESP or state.EntitiesESP or state.LockerESP or state.BadLockerESP or state.Notify or next(espObjects) then safeRefreshESP() end
         end
         if not root or not humanoid or humanoid.Health<=0 then
             if state.AutoFloor then status("Waiting for character...") end

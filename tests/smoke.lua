@@ -264,6 +264,18 @@ assert(lockerEntries==1,"Locker ESP missing or duplicated")
 local lockerColor=Color3.new(1,0,0); ui.TH_LockerColor:SetValue(lockerColor); run.Heartbeat:Fire(1)
 assert(lockerESP.color==lockerColor,"Locker color did not update")
 ui.TH_LockerESP:SetValue(false); run.Heartbeat:Fire(1); assert(lockerESP.Deleted,"Locker ESP not removed")
+local bad=node("Model","A-70",room)
+local badPart=node("Part","Body",bad); bad.PrimaryPart=badPart; badPart.Position=Vector3.new(6,0,0)
+ws.DescendantAdded:Fire(bad); ws.DescendantAdded:Fire(badPart)
+ui.TH_BadLockerESP:SetValue(true); run.Heartbeat:Fire(1)
+local badEntry
+for _,entry in ipairs(esp.created) do if entry.settings.Model==bad and not entry.Deleted then badEntry=entry end end
+assert(badEntry and badEntry.settings.Name=="A-70 | BAD LOCKER","A-70 ESP missing")
+local badColor=Color3.new(.2,.3,.4);ui.TH_BadLockerColor:SetValue(badColor);run.Heartbeat:Fire(1)
+assert(badEntry.color==badColor,"A-70 color picker failed")
+ui.TH_BadLockerESP:SetValue(false);run.Heartbeat:Fire(1)
+assert(badEntry.Deleted,"A-70 ESP not removed")
+
 local originalAttribute=player.GetAttribute
 player.GetAttribute=function(_,key) if key=="CurrentRoom" then return "A-211" end end
 run.Heartbeat:Fire(1)
