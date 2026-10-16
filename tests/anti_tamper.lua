@@ -115,4 +115,32 @@ assert(#c6 == 0 and #s6 == 0, "avoid substring / Frame false positives")
 d6:Stop()
 assert(#c6 == 0, "Stop is harmless after a clean run")
 
+
+-- A tool GUI may be parented to a separate UI root, not CoreGui.
+local function uiRoot()
+    local root = {DescendantAdded = event(), children = {}}
+    function root:GetDescendants() return self.children end
+    return root
+end
+local firstRoot, secondRoot = uiRoot(), uiRoot()
+local logger = {MessageOut = event(), history = {}}
+function logger:GetLogHistory() return self.history end
+local runner = {Heartbeat = event()}
+local found = {}
+local multi = AntiTamper.Start({
+    Roots = {firstRoot, secondRoot, firstRoot},
+    LogService = logger, RunService = runner,
+    OnConfirmed = function(kind, reason)
+        found[#found + 1] = kind .. "/" .. reason
+    end,
+})
+logger.MessageOut:Fire("SimpleSpy V3 loaded")
+secondRoot.DescendantAdded:Fire(makeGui("SimpleSpyV3"))
+assert(#found == 1 and found[1] == "RSPY/gui+log", "multiple roots")
+assert(#firstRoot.DescendantAdded.handlers == 1, "deduplicate listeners")
+multi:Stop()
+for _, hook in ipairs(firstRoot.DescendantAdded.handlers) do
+    assert(not hook.connection.Connected, "multi-root listener leaked")
+end
+
 print("PASS: tool signals, false positives, corroboration, startup, permissions, UI removal, disconnect")
