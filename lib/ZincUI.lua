@@ -1055,7 +1055,7 @@ function Section:AddColorPicker(opts)
         end
     end
     function controller:Set(color, silent)
-        if type(color) == "table" then
+        if typeof(color) ~= "Color3" and type(color) == "table" then
             color = Color3.fromRGB(tonumber(color[1]) or 0,
                 tonumber(color[2]) or 0, tonumber(color[3]) or 0)
         end
