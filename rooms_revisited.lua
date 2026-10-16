@@ -985,6 +985,7 @@ end)
 general:AddLabel("Switching style rebuilds the UI and restores current feature settings.",true)
 security:AddLabel("Best-effort protection. Tool names in logs alone only warn; no deliberate crashes.",true)
 security:AddLabel("Confirmed DEX/RSPY needs both a GUI indicator and an independent log indicator.",true)
+local securityStatus=security:AddLabel("Anti-tamper: starting...",true)
 local kickChoice=security:AddToggle("TH_SecurityKick",{
     Text="Kick on confirmed tool evidence",Default=antiTamperKick,
 })
@@ -995,8 +996,12 @@ end)
 security:AddButton({Text="Scan for DEX/RSPY now",Func=function()
     if antiTamper then
         antiTamper:Scan()
-        if not closed then notify("Anti-tamper scan finished. No confirmed match means no kick.") end
+        if not closed then
+            securityStatus:SetText("Anti-tamper: active; manual scan complete.")
+            notify("Scan complete. GUI indicator and matching log are required to confirm.")
+        end
     else
+        securityStatus:SetText("Anti-tamper: unavailable.")
         notify("Anti-tamper monitor unavailable.")
     end
 end})
@@ -1364,11 +1369,13 @@ do
                 OnSignal=function(kind, channel)
                     if closed then return end
                     warn("[Zinc Hub] Anti-tamper indicator: "..kind.." / "..channel)
+                    securityStatus:SetText("Anti-tamper: "..kind.." indicator in "..channel.." (unconfirmed)")
                 end,
                 OnConfirmed=function(kind, reason)
                     if closed then return end
                     local doKick=antiTamperKick and kind~="HubUI"
                     warn("[Zinc Hub] Anti-tamper: "..kind.." / "..reason)
+                    securityStatus:SetText("Anti-tamper: confirmed "..kind.." / "..reason)
                     if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
                     if doKick then
                         pcall(function() player:Kick("Zinc Hub: verified inspection-tool indicators ("..kind..")") end)
@@ -1378,15 +1385,20 @@ do
         end)
         if started then
             antiTamper=instance
+            if not closed and type(antiTamper)=="table" and not antiTamper.triggered then
+                securityStatus:SetText("Anti-tamper: active (GUI + logs + hub integrity)")
+            end
             if type(antiTamper)=="table" and antiTamper.triggered then
                 -- Callbacks may have unloaded the hub during the startup scan.
                 antiTamper:Stop()
             end
         else
             warn("[Zinc Hub] Anti-tamper startup failed: "..tostring(instance))
+            securityStatus:SetText("Anti-tamper: startup failed.")
         end
     else
         warn("[Zinc Hub] Anti-tamper unavailable: "..tostring(result))
+        securityStatus:SetText("Anti-tamper: unavailable.")
     end
 end
 if not ESP then notify("MSESP could not load. ESP is unavailable; other controls still work.") end
