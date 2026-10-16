@@ -25,9 +25,9 @@ The client environment must provide `loadstring` and `game:HttpGet`. Automatic p
 
 When Obsidian is selected, its main tabs serve as sections with tabboxes for subtabs. ZincUI uses its own left navigation and stacked sections.
 
-## ZincUI style (Windows XP layout, ZincUI v0.2.0)
+## ZincUI style (Windows XP layout, ZincUI v0.2.1)
 
-Choose **Home > General > UI style > Zinc** to replace the Obsidian interface with the in-repository `lib/ZincUI.lua` library. Choose **Obsidian** to switch back. Both styles use the existing automation and detection engine; `lib/ZincAdapter.lua` maps existing control calls to ZincUI without duplicating game logic.
+Choose **Home > General > UI style > Zinc** to replace Obsidian with the public [ZincUI library](https://github.com/KoSmoXD/ZincUI). The adapter tries the public source first and falls back to the in-repository `lib/ZincUI.lua` mirror if it is unavailable. Choose **Obsidian** to switch back. Both styles use the same game features; `lib/ZincAdapter.lua` maps controls without duplicating game logic.
 
 Switching styles rebuilds the client hub, preserves currently selected feature values (including colors, method, speed and toggles), and restores movement-related toggles last. The chosen style remains selected during the current client environment session. A fresh client session defaults to Obsidian; saved config files remain unchanged. If ZincUI fails to download or initialize, the hub attempts Obsidian fallback.
 
@@ -80,7 +80,7 @@ Mocks cannot verify the live map, server behavior, game interactions, or renderi
 
 ## Dependencies and references
 
-- ZincUI source: [`lib/ZincUI.lua`](lib/ZincUI.lua) and compatibility layer [`lib/ZincAdapter.lua`](lib/ZincAdapter.lua).
+- Public standalone library: [KoSmoXD/ZincUI](https://github.com/KoSmoXD/ZincUI) (MIT). Hub fallback mirror: [`lib/ZincUI.lua`](lib/ZincUI.lua). Adapter: [`lib/ZincAdapter.lua`](lib/ZincAdapter.lua).
 - [Obsidian documentation](https://docs.mspaint.cc/obsidian) — pinned dependency commit `d62041eda54085a03259c789d4af2be76077379f`.
 - [MSESP documentation](https://docs.mstudio45.com/esp-library/home) — pinned dependency commit `dbde68c85af504d58dac73a537fda21ca8fa626a` (an already-loaded shared MSESP instance is reused).
 - [User-supplied game wiki](https://rooms-revisited.fandom.com/wiki/ROOMS:_Revisited_Wiki).
