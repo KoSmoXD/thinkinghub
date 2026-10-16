@@ -1,6 +1,6 @@
 # thinkinghub
 
-**Thinking Hub for ROOMS: Revisited — Mr H, Owner.**
+**Zinc Hub for ROOMS: Revisited.**
 
 Standalone client hub using selectable [Obsidian](https://github.com/deividcomsono/Obsidian) or **ZincUI** (our own library), plus [MSESP](https://github.com/mstudio45/MSESP). It does not require mspaint or the DOORS addon.
 
@@ -18,8 +18,7 @@ The client environment must provide `loadstring` and `game:HttpGet`. Automatic p
 
 | Section | Tabs / features |
 | --- | --- |
-| Credits | **Mr H - Owner** in yellow; library attribution |
-| Home | General: Unload and UI style **Obsidian / Zinc**. Configs: Create, Load, Overwrite, Delete, Refresh. Security: anti-tamper diagnostics, manual scan and optional kick |
+| Home | General: Unload and UI style **Obsidian / Zinc**. Configs: Create, Load, Overwrite, Delete, Refresh |
 | Main | Player: Loop speed toggle; speed slider **0–1000**; Instant interact; Auto interact for drawers and money |
 | Visual | ESP: Doors, Bucks, Entities, each with its own color picker. Notify: entity toggle, Roblox sound ID input, Apply Notify Sound |
 | Floor | Auto Floor toggle; **TP / Pathfind**; Auto loot; Auto look; Smooth camera; path color picker; editable detection settings |
@@ -33,21 +32,6 @@ Choose **Home > General > UI style > Zinc** to replace the Obsidian interface wi
 Switching styles rebuilds the client hub, preserves currently selected feature values (including colors, method, speed and toggles), and restores movement-related toggles last. The chosen style remains selected during the current client environment session. A fresh client session defaults to Obsidian; saved config files remain unchanged. If ZincUI fails to download or initialize, the hub attempts Obsidian fallback.
 
 The custom ZincUI style is a single Windows XP-inspired application window, with a blue title bar, left navigation, square beveled controls and bottom status bar. It supports mouse/touch, sections, dropdowns, buttons, sliders, color pickers, notifications and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
-
-## Security monitor (experimental)
-
-**Home > Security** contains an anti-tamper monitor status label, **Scan for DEX/RSPY now** and **Kick on confirmed tool evidence** (on by default; turn it off when testing). The client tries to monitor accessible **CoreGui**, **PlayerGui**, and any available `gethui()` root, as well as new Roblox `LogService.MessageOut` messages and recent `GetLogHistory()` entries.
-
-The tool-name detector recognizes specific DEX / DarkDex and RSPY / SimpleSpy GUI names or startup strings. It requires a **matching GUI and log indicator** before treating a tool signature as confirmed. One suspicious indicator reports a warning without kicking. If ZincUI's own window unexpectedly disappears, the hub safely unloads. Confirmed tool evidence unloads the hub and, when the kick option is enabled, requests a local `Player:Kick`. This implementation **never deliberately freezes or crashes Roblox**.
-
-**Limits:** Client-side monitoring cannot reliably see hidden or renamed tools, blocked CoreGui, or silent instrumentation. Matching indicators can be spoofed; false positives remain possible. A bypass cannot be guaranteed to cause a kick. This is local best-effort monitoring, not a substitute for server-side access control. Disable auto-kick while validating signatures.
-
-To run standalone mocked tests without executing a live tool:
-
-```sh
-texluac -p lib/AntiTamper.lua
-texlua tests/anti_tamper.lua
-```
 
 ## Movement and interaction
 
@@ -90,7 +74,6 @@ Earlier versions were syntax checked with `texluac -p`. Offline mocked behavior 
 texluac -p rooms_revisited.lua
 texluac -p loader.lua
 texlua tests/smoke.lua
-texlua tests/anti_tamper.lua
 ```
 
 Mocks cannot verify the live map, server behavior, game interactions, or rendering.
@@ -98,7 +81,6 @@ Mocks cannot verify the live map, server behavior, game interactions, or renderi
 ## Dependencies and references
 
 - ZincUI source: [`lib/ZincUI.lua`](lib/ZincUI.lua) and compatibility layer [`lib/ZincAdapter.lua`](lib/ZincAdapter.lua).
-- Anti-tamper monitor: [`lib/AntiTamper.lua`](lib/AntiTamper.lua) and unit tests [`tests/anti_tamper.lua`](tests/anti_tamper.lua).
 - [Obsidian documentation](https://docs.mspaint.cc/obsidian) — pinned dependency commit `d62041eda54085a03259c789d4af2be76077379f`.
 - [MSESP documentation](https://docs.mstudio45.com/esp-library/home) — pinned dependency commit `dbde68c85af504d58dac73a537fda21ca8fa626a` (an already-loaded shared MSESP instance is reused).
 - [User-supplied game wiki](https://rooms-revisited.fandom.com/wiki/ROOMS:_Revisited_Wiki).
