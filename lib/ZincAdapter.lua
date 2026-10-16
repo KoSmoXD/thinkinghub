@@ -39,7 +39,12 @@ local function wrapSection(section)
     function box:AddLabel(value)
         local label = section:AddLabel(value)
         local result = {}
-        function result:SetText(text) label:Set(text) end
+        function result:SetText(text)
+            label:Set(text)
+            if value == "Ready. Choose your features." and Library._window then
+                Library._window:SetStatus(text)
+            end
+        end
         function result:AddColorPicker(id, opts)
             bind(section, id, {Text = opts.Title or id, Default = opts.Default}, "AddColorPicker")
             return self
@@ -63,7 +68,7 @@ function Library:CreateWindow(opts)
     assert(not self._window, "ZincAdapter: window already created")
     local zincWindow = Zinc:CreateWindow({
         Title = opts.Title or "Zinc Hub", Subtitle = opts.Footer or "Mr H",
-        Theme = "Dark", ToggleKey = Enum.KeyCode.RightControl,
+        Theme = "XP", ToggleKey = Enum.KeyCode.RightControl,
     })
     self._window = zincWindow
     local originalDestroy = zincWindow.Destroy
