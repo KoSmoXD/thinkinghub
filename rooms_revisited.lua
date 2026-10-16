@@ -1212,48 +1212,6 @@ if type(carriedState)=="table" then
     if carriedState.SpeedEnabled~=nil then controls.SpeedEnabled:SetValue(carriedState.SpeedEnabled) end
     if carriedState.AutoFloor~=nil then controls.AutoFloor:SetValue(carriedState.AutoFloor) end
 end
--- The monitor is independent of the UI renderer and can be stopped during unload.
--- A bypass of client-side checks cannot be guaranteed to cause any action.
-do
-    local ok, result=pcall(download,
-        "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/AntiTamper.lua",
-        "AntiTamper")
-    if ok and type(result)=="table" and type(result.Start)=="function" then
-        local started, instance=pcall(function()
-            return result.Start({
-                RunService=RS,
-                GetOwnGui=function()
-                    return selectedStyle=="Zinc" and Library._window
-                        and Library._window._gui or nil
-                end,
-                OnSignal=function(kind, channel)
-                    if closed then return end
-                    warn("[Zinc Hub] Anti-tamper indicator: "..kind.." / "..channel)
-                end,
-                OnConfirmed=function(kind, reason)
-                    if closed then return end
-                    local doKick=antiTamperKick and kind~="HubUI"
-                    warn("[Zinc Hub] Anti-tamper: "..kind.." / "..reason)
-                    if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
-                    if doKick then
-                        pcall(function() player:Kick("Zinc Hub: verified inspection-tool indicators ("..kind..")") end)
-                    end
-                end,
-            })
-        end)
-        if started then
-            antiTamper=instance
-            if type(antiTamper)=="table" and antiTamper.triggered then
-                -- Callbacks may have unloaded the hub during the startup scan.
-                antiTamper:Stop()
-            end
-        else
-            warn("[Zinc Hub] Anti-tamper startup failed: "..tostring(instance))
-        end
-    else
-        warn("[Zinc Hub] Anti-tamper unavailable: "..tostring(result))
-    end
-end
 for _,o in ipairs(WS:GetDescendants()) do register(o) end
 connect(WS.DescendantAdded,register)
 connect(WS.DescendantRemoving,function(o)
@@ -1375,6 +1333,48 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
         end
     end
 end)
+-- The monitor is independent of the UI renderer and can be stopped during unload.
+-- A bypass of client-side checks cannot be guaranteed to cause any action.
+do
+    local ok, result=pcall(download,
+        "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/AntiTamper.lua",
+        "AntiTamper")
+    if ok and type(result)=="table" and type(result.Start)=="function" then
+        local started, instance=pcall(function()
+            return result.Start({
+                RunService=RS,
+                GetOwnGui=function()
+                    return selectedStyle=="Zinc" and Library._window
+                        and Library._window._gui or nil
+                end,
+                OnSignal=function(kind, channel)
+                    if closed then return end
+                    warn("[Zinc Hub] Anti-tamper indicator: "..kind.." / "..channel)
+                end,
+                OnConfirmed=function(kind, reason)
+                    if closed then return end
+                    local doKick=antiTamperKick and kind~="HubUI"
+                    warn("[Zinc Hub] Anti-tamper: "..kind.." / "..reason)
+                    if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
+                    if doKick then
+                        pcall(function() player:Kick("Zinc Hub: verified inspection-tool indicators ("..kind..")") end)
+                    end
+                end,
+            })
+        end)
+        if started then
+            antiTamper=instance
+            if type(antiTamper)=="table" and antiTamper.triggered then
+                -- Callbacks may have unloaded the hub during the startup scan.
+                antiTamper:Stop()
+            end
+        else
+            warn("[Zinc Hub] Anti-tamper startup failed: "..tostring(instance))
+        end
+    else
+        warn("[Zinc Hub] Anti-tamper unavailable: "..tostring(result))
+    end
+end
 if not ESP then notify("MSESP could not load. ESP is unavailable; other controls still work.") end
 if type(fireproximityprompt)~="function" then notify("Prompt automation unavailable: fireproximityprompt is missing.") end
 notify("Zinc Hub loaded | Mr H - Owner")
