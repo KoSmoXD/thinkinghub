@@ -1,4 +1,4 @@
--- Zinc Hub | ROOMS: Revisited | Mr H - Owner
+-- Zinc Hub | ROOMS: Revisited
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
@@ -37,9 +37,6 @@ local HTTP, SoundService = game:GetService("HttpService"), game:GetService("Soun
 local PPS = game:GetService("ProximityPromptService")
 local player = Players.LocalPlayer
 local closed, revision, planning = false, 0, false
-local antiTamper = nil
-local antiTamperKick = env.ZincHubAntiTamperKick ~= false
-env.ZincHubAntiTamperKick = antiTamperKick
 local connections, savedSpeeds, savedHolds = {}, {}, {}
 local objects, prompts, clicks, espObjects = {}, {}, {}, {}
 local doorObjects, visualObjects = {}, {}
@@ -878,9 +875,7 @@ local function setLightEffect(key,enabled)
 end
 local function cleanup()
     if closed then return end
-    closed=true
-    if antiTamper then antiTamper:Stop(); antiTamper=nil end
-    state.AutoFloor=false; resetRoute(); restoreSpeed(); restoreHolds()
+    closed=true; state.AutoFloor=false; resetRoute(); restoreSpeed(); restoreHolds()
     RS:UnbindFromRenderStep(renderName)
     RS:UnbindFromRenderStep(renderName.."CameraBefore")
     RS:UnbindFromRenderStep(renderName.."CameraCapture")
@@ -928,19 +923,12 @@ do
     end
 end
 
-local Window=Library:CreateWindow({Title="Zinc Hub | ROOMS: Revisited",Footer="Mr H | "..VERSION,
+local Window=Library:CreateWindow({Title="Zinc Hub | ROOMS: Revisited",Footer="Zinc Hub | "..VERSION,
     Icon=hubIcon,Center=true,AutoShow=true,Resizable=true,NotifySide="Right",ShowCustomCursor=false})
-local Credits=Window:AddTab("Credits","crown")
-local owner=Credits:AddLeftGroupbox("Credits")
-owner:AddLabel('<font color="#FFFF00">Mr H - Owner</font>',true)
-owner:AddLabel("Zinc Hub\nROOMS: Revisited",true)
-local libraries=Credits:AddRightGroupbox("Libraries")
-libraries:AddLabel((selectedStyle=="Zinc" and "ZincUI - Mr H" or "Obsidian - deividcomsono").."\\nMSESP - mstudio45",true)
 local Home=Window:AddTab("Home","house")
 local homeTabs=Home:AddLeftTabbox()
 local general=homeTabs:AddTab("General")
 local configs=homeTabs:AddTab("Configs")
-local security=homeTabs:AddTab("Security")
 general:AddButton({Text="Unload",Func=function() env.ThinkingHub.Unload() end})
 general:AddLabel("Menu key: Right Control",true)
 local styleSelection=general:AddDropdown("TH_UIStyle",{Text="UI style",Values={"Obsidian","Zinc"},Default=selectedStyle,Multi=false})
@@ -983,28 +971,6 @@ styleSelection:OnChanged(function(chosen)
     end)
 end)
 general:AddLabel("Switching style rebuilds the UI and restores current feature settings.",true)
-security:AddLabel("Best-effort protection. Tool names in logs alone only warn; no deliberate crashes.",true)
-security:AddLabel("Confirmed DEX/RSPY needs both a GUI indicator and an independent log indicator.",true)
-local securityStatus=security:AddLabel("Anti-tamper: starting...",true)
-local kickChoice=security:AddToggle("TH_SecurityKick",{
-    Text="Kick on confirmed tool evidence",Default=antiTamperKick,
-})
-kickChoice:OnChanged(function(value)
-    antiTamperKick=(value==true)
-    env.ZincHubAntiTamperKick=antiTamperKick
-end)
-security:AddButton({Text="Scan for DEX/RSPY now",Func=function()
-    if antiTamper then
-        antiTamper:Scan()
-        if not closed then
-            securityStatus:SetText("Anti-tamper: active; manual scan complete.")
-            notify("Scan complete. GUI indicator and matching log are required to confirm.")
-        end
-    else
-        securityStatus:SetText("Anti-tamper: unavailable.")
-        notify("Anti-tamper monitor unavailable.")
-    end
-end})
 local info=Home:AddRightGroupbox("Status")
 statusLabel=info:AddLabel("Ready. Choose your features.",true)
 detectionLabel=info:AddLabel("Detecting objects...",true)
@@ -1338,71 +1304,8 @@ RS:BindToRenderStep(renderName,Enum.RenderPriority.Last.Value+1,function(dt)
         end
     end
 end)
--- The monitor is independent of the UI renderer and can be stopped during unload.
--- A bypass of client-side checks cannot be guaranteed to cause any action.
-do
-    local ok, result=pcall(download,
-        "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/AntiTamper.lua",
-        "AntiTamper")
-    if ok and type(result)=="table" and type(result.Start)=="function" then
-        local uiRoots={}
-        local function addRoot(root)
-            if not root then return end
-            for _, existing in ipairs(uiRoots) do
-                if existing==root then return end
-            end
-            uiRoots[#uiRoots+1]=root
-        end
-        pcall(function() addRoot(game:GetService("CoreGui")) end)
-        pcall(function() addRoot(player:FindFirstChildOfClass("PlayerGui")) end)
-        if type(gethui)=="function" then
-            pcall(function() addRoot(gethui()) end)
-        end
-        local started, instance=pcall(function()
-            return result.Start({
-                Roots=uiRoots,
-                RunService=RS,
-                GetOwnGui=function()
-                    return selectedStyle=="Zinc" and Library._window
-                        and Library._window._gui or nil
-                end,
-                OnSignal=function(kind, channel)
-                    if closed then return end
-                    warn("[Zinc Hub] Anti-tamper indicator: "..kind.." / "..channel)
-                    securityStatus:SetText("Anti-tamper: "..kind.." indicator in "..channel.." (unconfirmed)")
-                end,
-                OnConfirmed=function(kind, reason)
-                    if closed then return end
-                    local doKick=antiTamperKick and kind~="HubUI"
-                    warn("[Zinc Hub] Anti-tamper: "..kind.." / "..reason)
-                    securityStatus:SetText("Anti-tamper: confirmed "..kind.." / "..reason)
-                    if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
-                    if doKick then
-                        pcall(function() player:Kick("Zinc Hub: verified inspection-tool indicators ("..kind..")") end)
-                    end
-                end,
-            })
-        end)
-        if started then
-            antiTamper=instance
-            if not closed and type(antiTamper)=="table" and not antiTamper.triggered then
-                securityStatus:SetText("Anti-tamper: active (GUI + logs + hub integrity)")
-            end
-            if type(antiTamper)=="table" and antiTamper.triggered then
-                -- Callbacks may have unloaded the hub during the startup scan.
-                antiTamper:Stop()
-            end
-        else
-            warn("[Zinc Hub] Anti-tamper startup failed: "..tostring(instance))
-            securityStatus:SetText("Anti-tamper: startup failed.")
-        end
-    else
-        warn("[Zinc Hub] Anti-tamper unavailable: "..tostring(result))
-        securityStatus:SetText("Anti-tamper: unavailable.")
-    end
-end
 if not ESP then notify("MSESP could not load. ESP is unavailable; other controls still work.") end
 if type(fireproximityprompt)~="function" then notify("Prompt automation unavailable: fireproximityprompt is missing.") end
-notify("Zinc Hub loaded | Mr H - Owner")
+notify("Zinc Hub loaded")
 return env.ThinkingHub
 
