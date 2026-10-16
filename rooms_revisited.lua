@@ -2,7 +2,7 @@
 -- Standalone Obsidian + MSESP hub. No tplay code or game remote guesses.
 -- Runtime object names are configurable under Floor > Detection.
 -- Requires a client environment providing loadstring and game:HttpGet.
-local VERSION = "1.4.5"
+local VERSION = "1.5.0"
 local env = getgenv and getgenv() or _G
 if env.ThinkingHub and env.ThinkingHub.Unload then env.ThinkingHub.Unload() end
 local function download(url, name)
@@ -12,7 +12,21 @@ local function download(url, name)
     assert(fn, reason)
     return fn()
 end
-local Library = download("https://raw.githubusercontent.com/deividcomsono/Obsidian/d62041eda54085a03259c789d4af2be76077379f/Library.lua", "Obsidian")
+local selectedStyle = env.ZincHubUIStyle == "Zinc" and "Zinc" or "Obsidian"
+local Library
+if selectedStyle == "Zinc" then
+    local ok, loaded = pcall(download, "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincAdapter.lua", "ZincUI")
+    if ok then
+        Library = loaded
+    else
+        warn("[Zinc Hub] ZincUI unavailable, using Obsidian: " .. tostring(loaded))
+        selectedStyle = "Obsidian"
+    end
+end
+if not Library then
+    Library = download("https://raw.githubusercontent.com/deividcomsono/Obsidian/d62041eda54085a03259c789d4af2be76077379f/Library.lua", "Obsidian")
+end
+env.ZincHubUIStyle = selectedStyle
 local espOK, ESP = pcall(function()
     return env.mstudio45_ESP or download("https://raw.githubusercontent.com/mstudio45/MSESP/dbde68c85af504d58dac73a537fda21ca8fa626a/source.luau", "MSESP")
 end)
@@ -873,7 +887,7 @@ local function cleanup()
     if env.ThinkingHub and env.ThinkingHub.Library==Library then env.ThinkingHub=nil end
 end
 Library:OnUnload(cleanup)
-env.ThinkingHub={Library=Library,Unload=function() cleanup(); Library:Unload() end}
+env.ThinkingHub={Library=Library,UIStyle=selectedStyle,Unload=function() cleanup(); Library:Unload() end}
 local hubIcon = "crown"
 do
     -- Zinc Hub logo, embedded so no extra download is needed.
@@ -916,13 +930,53 @@ local owner=Credits:AddLeftGroupbox("Credits")
 owner:AddLabel('<font color="#FFFF00">Mr H - Owner</font>',true)
 owner:AddLabel("Zinc Hub\nROOMS: Revisited",true)
 local libraries=Credits:AddRightGroupbox("Libraries")
-libraries:AddLabel("Obsidian - deividcomsono\nMSESP - mstudio45",true)
+libraries:AddLabel((selectedStyle=="Zinc" and "ZincUI - Mr H" or "Obsidian - deividcomsono").."\\nMSESP - mstudio45",true)
 local Home=Window:AddTab("Home","house")
 local homeTabs=Home:AddLeftTabbox()
 local general=homeTabs:AddTab("General")
 local configs=homeTabs:AddTab("Configs")
 general:AddButton({Text="Unload",Func=function() env.ThinkingHub.Unload() end})
 general:AddLabel("Menu key: Right Control",true)
+local styleSelection=general:AddDropdown("TH_UIStyle",{Text="UI style",Values={"Obsidian","Zinc"},Default=selectedStyle,Multi=false})
+styleSelection:OnChanged(function(chosen)
+    if chosen==selectedStyle or (chosen~="Obsidian" and chosen~="Zinc") then return end
+    local oldStyle=selectedStyle
+    local carried={}
+    for key,value in pairs(state) do carried[key]=value end
+    task.defer(function()
+        -- Download/compile first: don't lose the current UI on a network failure.
+        local ok,source=pcall(function()
+            return game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/rooms_revisited.lua?style="..HTTP:GenerateGUID(false))
+        end)
+        if not ok or type(source)~="string" then
+            styleSelection:SetValue(oldStyle)
+            notify("UI switch failed: cannot download Zinc Hub.")
+            return
+        end
+        local chunk,err=loadstring(source,"@ZincHub/StyleSwitch")
+        if not chunk then
+            styleSelection:SetValue(oldStyle)
+            notify("UI switch failed: "..tostring(err))
+            return
+        end
+        env.ZincHubUIStyle=chosen
+        env.ZincHubTransferState=carried
+        local success,reason=pcall(chunk)
+        if not success then
+            warn("[Zinc Hub] UI switch failed: "..tostring(reason))
+            env.ZincHubUIStyle=oldStyle
+            env.ZincHubTransferState=carried
+            local recovered,recoveryReason=pcall(chunk)
+            if not recovered then
+                warn("[Zinc Hub] UI recovery failed: "..tostring(recoveryReason))
+                env.ZincHubTransferState=nil
+            end
+        elseif env.ThinkingHub and env.ThinkingHub.UIStyle~=chosen then
+            notify("ZincUI could not load; using Obsidian.")
+        end
+    end)
+end)
+general:AddLabel("Switching style rebuilds the UI and restores current feature settings.",true)
 local info=Home:AddRightGroupbox("Status")
 statusLabel=info:AddLabel("Ready. Choose your features.",true)
 detectionLabel=info:AddLabel("Detecting objects...",true)
@@ -1121,6 +1175,20 @@ end)})
 configs:AddButton({Text="Refresh configs",Func=configAction(refreshConfigs)})
 if not fsReady then configs:AddLabel("Filesystem unavailable: configs cannot be saved here.",true) end
 local ok,err=pcall(refreshConfigs); if not ok then notify(err) end
+-- Preserve active settings while the UI library is replaced.
+local carriedState=env.ZincHubTransferState
+env.ZincHubTransferState=nil
+if type(carriedState)=="table" then
+    for key,value in pairs(carriedState) do
+        if key~="AutoFloor" and key~="SpeedEnabled" and controls[key] then
+            local applied,why=pcall(function() controls[key]:SetValue(value) end)
+            if not applied then warn("[Zinc Hub] Could not restore "..tostring(key)..": "..tostring(why)) end
+        end
+    end
+    applySound(state.Sound,false)
+    if carriedState.SpeedEnabled~=nil then controls.SpeedEnabled:SetValue(carriedState.SpeedEnabled) end
+    if carriedState.AutoFloor~=nil then controls.AutoFloor:SetValue(carriedState.AutoFloor) end
+end
 for _,o in ipairs(WS:GetDescendants()) do register(o) end
 connect(WS.DescendantAdded,register)
 connect(WS.DescendantRemoving,function(o)
