@@ -1340,8 +1340,22 @@ do
         "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/AntiTamper.lua",
         "AntiTamper")
     if ok and type(result)=="table" and type(result.Start)=="function" then
+        local uiRoots={}
+        local function addRoot(root)
+            if not root then return end
+            for _, existing in ipairs(uiRoots) do
+                if existing==root then return end
+            end
+            uiRoots[#uiRoots+1]=root
+        end
+        pcall(function() addRoot(game:GetService("CoreGui")) end)
+        pcall(function() addRoot(player:FindFirstChildOfClass("PlayerGui")) end)
+        if type(gethui)=="function" then
+            pcall(function() addRoot(gethui()) end)
+        end
         local started, instance=pcall(function()
             return result.Start({
+                Roots=uiRoots,
                 RunService=RS,
                 GetOwnGui=function()
                     return selectedStyle=="Zinc" and Library._window
