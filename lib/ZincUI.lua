@@ -1,4 +1,4 @@
--- ZincUI v0.2.0 | Windows XP application-window theme
+-- ZincUI v0.2.1 | Windows XP application-window theme
 -- Client-side Roblox Luau UI library. No third-party dependencies.
 -- Run from a LocalScript, or load the returned library through loadstring.
 
@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 local Zinc = {
-    Version = "0.2.0",
+    Version = "0.2.1",
     Themes = {
         XP = {
             Background = Color3.fromRGB(236, 233, 216),
@@ -105,8 +105,8 @@ end
 
 local function copyTheme(theme)
     local copy = {}
+    -- Custom themes inherit XP defaults, not the legacy dark palette.
     for key, value in pairs(Zinc.Themes.XP) do copy[key] = value end
-    for key, value in pairs(Zinc.Themes.Dark) do copy[key] = value end
     for key, value in pairs(theme) do
         assert(typeof(value) == "Color3", "ZincUI theme field " .. tostring(key) .. " must be Color3")
         copy[key] = value
