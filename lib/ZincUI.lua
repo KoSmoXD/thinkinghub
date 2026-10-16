@@ -641,6 +641,7 @@ function Section:AddLabel(value)
         Size = UDim2.new(1, -22, 1, 0),
         Text = tostring(value or ""),
         TextSize = 12,
+        RichText = true,
     })
     self._window:_bind(label, { TextColor3 = "Muted" })
     return { Set = function(_, text) label.Text = tostring(text or "") end }
