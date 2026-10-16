@@ -2,7 +2,7 @@
 
 **Thinking Hub for ROOMS: Revisited — Mr H, Owner.**
 
-Standalone client hub using [Obsidian](https://github.com/deividcomsono/Obsidian) and [MSESP](https://github.com/mstudio45/MSESP). It does not require mspaint or the DOORS addon.
+Standalone client hub using selectable [Obsidian](https://github.com/deividcomsono/Obsidian) or **ZincUI** (our own library), plus [MSESP](https://github.com/mstudio45/MSESP). It does not require mspaint or the DOORS addon.
 
 ## Run
 
@@ -10,7 +10,7 @@ Standalone client hub using [Obsidian](https://github.com/deividcomsono/Obsidian
 loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/loader.lua"))()
 ```
 
-The loader fetches the current `rooms_revisited.lua` with a fresh query parameter each time. Running it again unloads the previous Thinking Hub instance first. **Right Control** toggles the menu; Obsidian also provides mobile controls.
+The loader fetches the current `rooms_revisited.lua` with a fresh query parameter each time. Running it again unloads the previous Thinking Hub instance first. **Right Control** toggles the menu in both UI styles; ZincUI supports mouse and touch.
 
 The client environment must provide `loadstring` and `game:HttpGet`. Automatic prompt interactions require `fireproximityprompt`; click interactions require `fireclickdetector`. The script is not a normal Roblox Studio LocalScript.
 
@@ -19,12 +19,20 @@ The client environment must provide `loadstring` and `game:HttpGet`. Automatic p
 | Section | Tabs / features |
 | --- | --- |
 | Credits | **Mr H - Owner** in yellow; library attribution |
-| Home | General: Unload. Configs: name input, selection, Create, Load, Overwrite, Delete, Refresh |
+| Home | General: Unload and UI style **Obsidian / Zinc**. Configs: name input, selection, Create, Load, Overwrite, Delete, Refresh |
 | Main | Player: Loop speed toggle; speed slider **0–1000**; Instant interact; Auto interact for drawers and money |
 | Visual | ESP: Doors, Bucks, Entities, each with its own color picker. Notify: entity toggle, Roblox sound ID input, Apply Notify Sound |
 | Floor | Auto Floor toggle; **TP / Pathfind**; Auto loot; Auto look; Smooth camera; path color picker; editable detection settings |
 
-Obsidian's main tabs serve as sections, with tabboxes inside them for the requested subtabs.
+When Obsidian is selected, its main tabs serve as sections with tabboxes for subtabs. ZincUI uses its own left navigation and stacked sections.
+
+## ZincUI style (v1.5.0)
+
+Choose **Home > General > UI style > Zinc** to replace the Obsidian interface with the in-repository `lib/ZincUI.lua` library. Choose **Obsidian** to switch back. Both styles use the existing automation and detection engine; `lib/ZincAdapter.lua` maps existing control calls to ZincUI without duplicating game logic.
+
+Switching styles rebuilds the client hub, preserves currently selected feature values (including colors, method, speed and toggles), and restores movement-related toggles last. The chosen style remains selected during the current client environment session. A fresh client session defaults to Obsidian; saved config files remain unchanged. If ZincUI fails to download or initialize, the hub attempts Obsidian fallback.
+
+The custom ZincUI window supports mouse/touch interactions, sections, dropdowns, buttons, sliders, color pickers, notifications, and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
 
 ## Movement and interaction
 
@@ -61,7 +69,7 @@ If no path appears, check **Home > Status** for the detected object counts and c
 
 ## Validation
 
-Syntax checked with `texluac -p`. Offline mocked behavior tests cover startup, loop speed and restore, Pathfind steering, TP, cancelled path calculations, prompt interaction, ESP updates, notification deduplication, config CRUD / path validation, and idempotent unload cleanup.
+Earlier versions were syntax checked with `texluac -p`. Offline mocked behavior tests cover startup, loop speed and restore, Pathfind steering, TP, cancelled path calculations, prompt interaction, ESP updates, notification deduplication, config CRUD / path validation, and idempotent unload cleanup.
 
 ```sh
 texluac -p rooms_revisited.lua
@@ -73,6 +81,7 @@ Mocks cannot verify the live map, server behavior, game interactions, or renderi
 
 ## Dependencies and references
 
+- ZincUI source: [`lib/ZincUI.lua`](lib/ZincUI.lua) and compatibility layer [`lib/ZincAdapter.lua`](lib/ZincAdapter.lua).
 - [Obsidian documentation](https://docs.mspaint.cc/obsidian) — pinned dependency commit `d62041eda54085a03259c789d4af2be76077379f`.
 - [MSESP documentation](https://docs.mstudio45.com/esp-library/home) — pinned dependency commit `dbde68c85af504d58dac73a537fda21ca8fa626a` (an already-loaded shared MSESP instance is reused).
 - [User-supplied game wiki](https://rooms-revisited.fandom.com/wiki/ROOMS:_Revisited_Wiki).
