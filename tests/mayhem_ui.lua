@@ -46,7 +46,7 @@ function rawLibrary:MakeDraggable(frame, grip, ignoreToggled, mainWindow)
     capturedGrip = grip
 end
 function rawLibrary:CreateWindow(opts)
-    assert(opts.ToggleKeybind == Enum.KeyCode.RightShift,
+    assert(opts.ToggleKeybind == "RightShift",
         "Obsidian window must use RightShift for toggle")
     return {MainFrame = mainFrame, AddTab = function(_,name)
         assert(type(name) == "string")
