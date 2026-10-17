@@ -94,7 +94,7 @@ local state = {
     fragmentESP = false, bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false, infiniteStamina = false,
-    rushAuto = false, rushAbility = true, rushManual = false,
+    entityAuto = false, entityAbility = true, entityProfile = "Auto",
     fov = 90, spectate = false,
     playerColor = "Green", uiTheme = "XP",
 }
@@ -126,22 +126,23 @@ end
 
 -- Rush Auto Play: PathfindingService chases survivors, input hooks are opt-in.
 -- Ability key mapping differs by game version; leave unmapped keys at None.
-local rushController
-local rushModuleURL = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemRushAuto.lua"
+local entityController
+local entityModuleURL = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemEntityAuto.lua"
 do
     local ok, created = pcall(function()
-        local source = game:HttpGet(rushModuleURL)
-        local chunk, compileError = loadstring(source, "@ZincMayhem/RushAuto")
+        local source = game:HttpGet(entityModuleURL)
+        local chunk, compileError = loadstring(source, "@ZincMayhem/EntityAuto")
         assert(chunk, compileError)
         local module = chunk()
-        local inputManager = game:GetService("VirtualInputManager")
+        local inputManager
+        pcall(function() inputManager = game:GetService("VirtualInputManager") end)
         local validKeys = {
             Q=true,E=true,R=true,F=true,Z=true,X=true,C=true,V=true,
             One=true,Two=true,Three=true,Four=true,Five=true,
             MouseButton1=false,
         }
         local function sendAbility(binding)
-            if not validKeys[binding] then return false end
+            if not inputManager or not validKeys[binding] then return false end
             local key = Enum.KeyCode[binding]
             if not key then return false end
             local success = pcall(function()
@@ -156,8 +157,8 @@ do
             workspace=Workspace, sendAbility=sendAbility,
         })
     end)
-    if ok then rushController=created
-    else warn("[Zinc Mayhem] Rush Auto Play unavailable: "..tostring(created)) end
+    if ok then entityController=created
+    else warn("[Zinc Mayhem] Entity Auto Play unavailable: "..tostring(created)) end
 end
 
 local closed = false
@@ -753,8 +754,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.7 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.7 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.8 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.8 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -770,7 +771,7 @@ unload = function()
     setFullbright(false)
     restoreCamera()
     if staminaController then staminaController:Unload() end
-    if rushController then rushController:Unload() end
+    if entityController then entityController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
     table.clear(indexed)
@@ -778,7 +779,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.7.0",
+env.ZincMayhem = {Unload = unload, Version = "0.8.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
@@ -823,76 +824,92 @@ movementSection:AddButton({Name = "Inspect local stamina sources",
     end})
 movementSection:AddLabel("No sources found? The game may hide stamina internally.")
 
-local rushTab = window:CreateTab("Rush")
-local rushSection = rushTab:CreateSection("Rush Auto Play (beta)")
-rushSection:AddLabel("Rush only: nearest survivor, pathfinding, stuck recovery.")
-local rushStatus = rushSection:AddLabel(
-    rushController and rushController:Status() or "Rush controller unavailable")
-rushSection:AddToggle({Name="Auto Play: chase nearest survivor",
-    Flag="mayhem_rush_autoplay", Default=state.rushAuto,
+-- Shared movement engine for all MAYHEM entity roles.
+local entities = window:CreateTab("Entities")
+local auto = entities:CreateSection("Entity Auto Play (beta)")
+auto:AddLabel("Nearest survivor + PathfindingService; rescans when stuck.")
+auto:AddLabel("Supports Rush, Figure, Bramble, Seek, Halt, Eyes, Jeff and generic roles.")
+local entityStatus = auto:AddLabel(
+    entityController and entityController:Status() or "Entity controller unavailable")
+local restoredBinds = type(transfer) == "table" and transfer.entityBinds
+if entityController then
+    if type(restoredBinds) == "table" then
+        for name, binds in pairs(restoredBinds) do
+            entityController:SetBindings(name, binds)
+        end
+    elseif type(transfer) == "table" and type(transfer.rushKeys) == "table" then
+        -- Upgrade old four Rush keys to the new slot scheme.
+        local keys = transfer.rushKeys
+        entityController:SetBindings("Rush", {
+            keys.rushHour or "None", keys.comingThrough or "None",
+            keys.shockwave or "None", keys.blackout or "None",
+        })
+    end
+    entityController.autoAbility = state.entityAbility
+    entityController.manualProfile = state.entityProfile
+    if state.entityAuto then entityController:SetEnabled(true) end
+end
+auto:AddToggle({Name="Auto Play: chase nearest survivor",
+    Flag="mayhem_entity_auto", Default=state.entityAuto,
     Callback=function(value)
-        state.rushAuto=value
-        if rushController then
-            rushController:SetEnabled(value)
-            window:SetStatus("Rush: "..rushController:Status())
-        else window:SetStatus("Rush controller unavailable") end
+        state.entityAuto=value
+        if entityController then
+            entityController:SetEnabled(value)
+            window:SetStatus("Entities: "..entityController:Status())
+        else window:SetStatus("Entity controller unavailable") end
     end})
-rushSection:AddToggle({Name="Use Rush abilities automatically",
-    Flag="mayhem_rush_abilities", Default=state.rushAbility,
+auto:AddToggle({Name="Use configured abilities automatically",
+    Flag="mayhem_entity_abilities", Default=state.entityAbility,
     Callback=function(value)
-        state.rushAbility=value
-        if rushController then rushController.autoAbility=value end
+        state.entityAbility=value
+        if entityController then entityController.autoAbility=value end
     end})
-rushSection:AddToggle({Name="Manual Rush role override (if detection fails)",
-    Flag="mayhem_rush_override", Default=state.rushManual,
-    Callback=function(value)
-        state.rushManual=value
-        if rushController then rushController.manualRush=value end
-    end})
-rushSection:AddButton({Name="Re-scan nearest survivor and rebuild path",
-    ButtonText="Rescan", Callback=function()
-        if not rushController then return end
-        local player,dist=rushController:FindNearest()
-        if player then
-            rushController.target=player
-            rushController.lastPlan=-math.huge
-            rushController:Plan("manual rescan")
-            window:SetStatus("Rush target: "..player.Name.." | "..math.floor(dist).." studs")
-        else
-            window:SetStatus("No valid target / Rush character not loaded")
+auto:AddDropdown({Name="Current entity (manual override)",
+    Flag="mayhem_entity_profile", Options={"Auto","Rush","Figure","Bramble",
+        "Seek","Halt","Eyes","Jeff","Generic"},
+    Default=state.entityProfile, Callback=function(value)
+        state.entityProfile=value
+        if entityController then
+            entityController.manualProfile=value
+            entityController:Rescan()
         end
     end})
-local rushAbilities = rushTab:CreateSection("Auto ability key mapping")
-rushAbilities:AddLabel("Set the in-game Rush skill keys below; unknown defaults are None.")
-local keys = {"None","Q","E","R","F","Z","X","C","V",
-    "One","Two","Three","Four","Five"}
-for _, skill in ipairs({
-    {"rushHour","Rush Hour (main)",45},
-    {"comingThrough","Coming Through (charge)",18},
-    {"shockwave","Shockwave",75},
-    {"blackout","Blackout",250},
-}) do
-    local id, label=skill[1],skill[2]
-    rushAbilities:AddDropdown({Name=label,Flag="mayhem_rush_"..id,
-        Options=keys,
-        Default=(rushController and rushController.abilityKeys[id]) or "None",
-        Callback=function(choice)
-            if rushController then rushController.abilityKeys[id]=choice end
+auto:AddButton({Name="Rescan nearest survivor and rebuild path",
+    ButtonText="Rescan", Callback=function()
+        if not entityController then return end
+        local target=entityController:Rescan()
+        if target and entityController.enabled then
+            entityController:Plan("manual")
+        end
+        window:SetStatus(entityController:Status())
+    end})
+auto:AddLabel("Auto detection uses visible role/team attributes, not guessed characters.")
+auto:AddLabel("Requires a live Humanoid; special non-Humanoid entities may not move.")
+
+local ability = entities:CreateSection("Per-entity ability bindings")
+ability:AddLabel("Comma-separated keys: Primary, Ability 1, Ability 2, Ability 3.")
+ability:AddLabel("Allowed: None,Q,E,R,F,Z,X,C,V,One,Two,Three,Four,Five.")
+ability:AddLabel("Unknown keys default to None, so no abilities are spammed.")
+for _, profile in ipairs({"Rush","Figure","Bramble","Seek","Halt","Eyes",
+    "Jeff","Generic"}) do
+    local name = profile
+    local saved = entityController and entityController:Bindings(name)
+        or "None,None,None,None"
+    ability:AddTextbox({Name=name.." ability keys",
+        Flag="mayhem_entity_keys_"..name, Default=saved,
+        Placeholder="None,None,None,None",
+        Callback=function(value)
+            if not entityController then return end
+            if not entityController:SetBindings(name,value) then
+                window:SetStatus("Invalid "..name.." keys; expected 4 supported keys")
+            else
+                window:SetStatus(name.." ability bindings updated")
+            end
         end})
 end
-rushAbilities:AddLabel("Inputs use VirtualInputManager; executors may block them.")
-rushAbilities:AddLabel("Blackout only triggers if damage is detectable (150+).")
-if rushController then
-    rushController.autoAbility=state.rushAbility
-    rushController.manualRush=state.rushManual
-    if type(transfer)=="table" and type(transfer.rushKeys)=="table" then
-        for name, key in pairs(transfer.rushKeys) do
-            if rushController.abilityKeys[name] ~= nil
-                and type(key)=="string" then rushController.abilityKeys[name]=key end
-        end
-    end
-    if state.rushAuto then rushController:SetEnabled(true) end
-end
+ability:AddLabel("Jeff's Ultra Attack is never auto-used (it kicks the user).")
+ability:AddLabel("Ability mapping/cooldowns depend on game version: beta.")
+
 
 local esp = window:CreateTab("ESP")
 local playersSection = esp:CreateSection("Teams")
@@ -1079,7 +1096,7 @@ styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
                 bookAliases = books, leverAliases = levers, keyAliases = keys,
                 fragmentNames = customFragmentNames, keyNames = customKeyNames,
                 bookNames = customBookNames, leverNames = customLeverNames,
-                rushKeys = (rushController and rushController.abilityKeys) or {}}
+                entityBinds = (entityController and entityController.binds) or {}}
             env.ZincMayhemTransferState = saved
             env.ZincMayhemUIStyle = chosen
             local success, result = pcall(chunk)
@@ -1109,7 +1126,7 @@ local clock, scanClock = 0, 0
 track(RunService.Heartbeat, function(dt)
     if closed then return end
     if staminaController then staminaController:Step(dt) end
-    if rushController then rushController:Step(dt) end
+    if entityController then entityController:Step(dt) end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
     if scanClock >= 12 and (state.fragmentESP or state.bookESP
@@ -1139,7 +1156,7 @@ track(RunService.Heartbeat, function(dt)
     clock = 0
     applyVisuals()
     if staminaController then staminaLabel:Set(staminaController:Status()) end
-    if rushController then rushStatus:Set(rushController:Status()) end
+    if entityController then entityStatus:Set(entityController:Status()) end
     local playersCount, objectiveCount, fragmentCount, bookCount,
         leverCount, keyCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
