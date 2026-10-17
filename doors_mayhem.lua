@@ -636,7 +636,10 @@ end
 
 local function updateESP()
     local camera = Workspace.CurrentCamera
-    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local character = LocalPlayer.Character
+    local myRoot = character and (character:FindFirstChild("HumanoidRootPart")
+        or character.PrimaryPart
+        or character:FindFirstChildWhichIsA("BasePart", true))
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
     local candidates = {player = {}, objective = {}, fragment = {}, book = {},
         lever = {}, key = {}, exit = {}, entity = {}}
