@@ -19,9 +19,9 @@ local Players = {GetPlayerFromCharacter = function(_, instance)
 end}
 ]]
 local module = assert(load(prefix .. extracted
-    .. "\nreturn classify, fragmentAliases, LocalPlayer.Character, Workspace\n",
+    .. "\nreturn classify, fragmentAliases, LocalPlayer.Character, Workspace, bookAliases, leverAliases\n",
     "@mayhem_classifier"))
-local classify, aliases, localCharacter, workspace = module()
+local classify, aliases, localCharacter, workspace, books, levers = module()
 
 local function fake(name, kind, opts)
     opts = opts or {}
@@ -91,4 +91,43 @@ verify("generic nearby item not fragment", fake("WaterBottle", "Model",
     {parent = workspace}), nil)
 verify("glitch gate not fragment", fake("GlitchGate", "Model",
     {parent = workspace}), nil)
-print("mayhem fragment + character exclusion: ok")
+-- MAYHEM map-specific objective classification.
+-- Books and levers must no longer be swallowed by generic Objective ESP.
+verify("Library GlitchBook", fake("GlitchBook", "Model", {parent = workspace}), "book")
+verify("Library code book", fake("CodeBook", "BasePart", {parent = workspace}), "book")
+verify("Library numbered book", fake("Book_05", "Model", {parent = workspace}), "book")
+verify("Cellar lever", fake("CellarLever", "Model", {parent = workspace}), "lever")
+verify("Cellar numbered lever", fake("Lever_03", "BasePart", {parent = workspace}), "lever")
+verify("plain lever", fake("Lever", "Model", {parent = workspace}), "lever")
+verify("book shelf decoration excluded", fake("Book", "BasePart", {parent = workspace}), nil)
+verify("book-shaped decoration excluded", fake("Bookshelf", "Model", {parent = workspace}), nil)
+verify("fuse not lever", fake("FuseBox", "Model", {parent = workspace}), "objective")
+verify("plain handle not lever", fake("Handle", "BasePart", {parent = workspace}), "objective")
+local collectPrompt = fake("Interact", "ProximityPrompt",
+    {parent = workspace, objectText = "Book", actionText = "Collect"})
+verify("book prompt", collectPrompt, "book")
+local leverPrompt = fake("Pull", "ProximityPrompt",
+    {parent = workspace, objectText = "Cellar Lever", actionText = "Pull"})
+verify("lever prompt", leverPrompt, "lever")
+local readableBook = fake("Book", "Model", {parent = workspace,
+    prompt = fake("Read", "ProximityPrompt", {actionText = "Collect", objectText = "Book"})})
+verify("collectible named Book", readableBook, "book")
+local codeTag = fake("ObjectivePart", "BasePart", {parent = workspace})
+codeTag.tags = {"GlitchBook"}
+verify("tagged book", codeTag, "book")
+local leverAttrib = fake("InteractPart", "BasePart",
+    {parent = workspace, attrs = {ObjectiveType = "CellarLever"}})
+verify("attribute lever", leverAttrib, "lever")
+books.corruptedtome = true
+verify("custom book alias", fake("CorruptedTome", "Model", {parent = workspace}), "book")
+books.corruptedtome = nil
+verify("book alias clear", fake("CorruptedTome", "Model", {parent = workspace}), nil)
+levers.floorhandle = true
+verify("custom lever alias", fake("FloorHandle", "BasePart", {parent = workspace}), "lever")
+levers.floorhandle = nil
+verify("lever alias clear", fake("FloorHandle", "BasePart", {parent = workspace}), nil)
+verify("local carried book excluded", fake("GlitchBook", "Model",
+    {parent = localTool}), nil)
+verify("other player's lever excluded", fake("CellarLever", "Model",
+    {parent = remoteTool}), nil)
+print("mayhem fragment + book + lever + character exclusion: ok")
