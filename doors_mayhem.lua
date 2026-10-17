@@ -697,8 +697,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.4 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.4 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.5 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.5 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = Enum.KeyCode.RightControl,
 })
@@ -719,7 +719,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.4.0",
+env.ZincMayhem = {Unload = unload, Version = "0.5.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
@@ -771,9 +771,11 @@ local fragmentSection = esp:CreateSection("Glitch Fragment detection")
 local customFragmentNames = (type(transfer) == "table" and transfer.fragmentNames) or ""
 local customBookNames = (type(transfer) == "table" and transfer.bookNames) or ""
 local customLeverNames = (type(transfer) == "table" and transfer.leverNames) or ""
+local customKeyNames = (type(transfer) == "table" and transfer.keyNames) or ""
 if type(transfer) == "table" then
     for source, target in pairs({
         aliases = fragmentAliases, bookAliases = bookAliases, leverAliases = leverAliases,
+        keyAliases = keyAliases,
     }) do
         if type(transfer[source]) == "table" then
             for name in pairs(transfer[source]) do target[name] = true end
@@ -842,6 +844,35 @@ puzzleSection:AddButton({Name = "Apply aliases and rescan objectives", ButtonTex
         end
         window:SetStatus("Puzzle scan: "..seen.book.." books / "..seen.lever.." levers")
     end})
+local keySection = esp:CreateSection("Key detection")
+keySection:AddTextbox({Name = "Additional key names (comma-separated)",
+    Flag = "mayhem_key_names", Default = customKeyNames,
+    Placeholder = "e.g. CorruptedKey, SecretDoorKey",
+    Callback = function(value) customKeyNames = tostring(value or "") end})
+keySection:AddButton({Name = "Apply key aliases and rescan", ButtonText = "Rescan",
+    Callback = function()
+        table.clear(keyAliases)
+        local count = 0
+        for term in customKeyNames:gmatch("[^,]+") do
+            local alias = norm(term)
+            if #alias >= 5 and alias ~= "keyboard"
+                and alias ~= "keybind" and alias ~= "keyhole"
+                and alias ~= "door" and count < 16 then
+                keyAliases[alias] = true
+                count = count + 1
+            end
+        end
+        for instance, kind in pairs(indexed) do
+            if kind == "key" then indexed[instance] = nil end
+        end
+        for _, instance in ipairs(Workspace:GetDescendants()) do index(instance) end
+        local total = 0
+        for _, kind in pairs(indexed) do
+            if kind == "key" then total = total + 1 end
+        end
+        window:SetStatus("Key scan: "..total.." candidates")
+    end})
+
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
     Default = state.exitESP, Callback = function(v) state.exitESP = v end})
 mapSection:AddToggle({Name = "World entities (orange)", Flag = "mayhem_entities",
@@ -883,12 +914,13 @@ styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
             for key, value in pairs(state) do snapshot[key] = value end
             local aliases = {}
             for name in pairs(fragmentAliases) do aliases[name] = true end
-            local books, levers = {}, {}
+            local books, levers, keys = {}, {}, {}
             for name in pairs(bookAliases) do books[name] = true end
             for name in pairs(leverAliases) do levers[name] = true end
+            for name in pairs(keyAliases) do keys[name] = true end
             local saved = {state = snapshot, aliases = aliases,
-                bookAliases = books, leverAliases = levers,
-                fragmentNames = customFragmentNames,
+                bookAliases = books, leverAliases = levers, keyAliases = keys,
+                fragmentNames = customFragmentNames, keyNames = customKeyNames,
                 bookNames = customBookNames, leverNames = customLeverNames}
             env.ZincMayhemTransferState = saved
             env.ZincMayhemUIStyle = chosen
