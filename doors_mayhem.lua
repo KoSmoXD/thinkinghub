@@ -32,6 +32,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
 assert(LocalPlayer, "Zinc Mayhem requires a local client")
 
@@ -146,19 +147,53 @@ local function hasFragmentName(value)
     return false
 end
 
+local function hasPickupHint(instance)
+    if instance:IsA("ProximityPrompt") then
+        local words = norm(instance.ActionText .. " " .. instance.ObjectText)
+        return words:find("collect", 1, true) ~= nil
+            or words:find("pickup", 1, true) ~= nil
+            or words:find("grab", 1, true) ~= nil
+    end
+    if instance:IsA("Model") or instance:IsA("BasePart") then
+        local prompt = instance:FindFirstChildWhichIsA("ProximityPrompt", true)
+        return prompt and hasPickupHint(prompt) or false
+    end
+    return false
+end
 local function isGlitchFragment(instance)
     if hasFragmentName(instance.Name) then return true end
-    if norm(instance.Name) == "fragment" then
-        local parent = instance.Parent
-        if parent and norm(parent.Name):find("glitch", 1, true) then return true end
+    local label = norm(instance.Name)
+    local parent = instance.Parent
+    if label == "fragment" then
+        if parent then
+            local pname = norm(parent.Name)
+            if pname:find("glitch", 1, true)
+                or pname == "fragments"
+                or pname == "fragmentspawns" then return true end
+        end
+        if hasPickupHint(instance) then return true end
     end
-    for _, key in ipairs({"ItemName", "ItemId", "ItemType", "PickupName", "DisplayName"}) do
+    for _, key in ipairs({"ItemName", "ItemId", "ItemType", "PickupName",
+        "DisplayName", "Collectible", "ObjectiveType"}) do
         local value = instance:GetAttribute(key)
-        if type(value) == "string" and hasFragmentName(value) then return true end
+        if type(value) == "string" and (hasFragmentName(value)
+            or (label == "fragment" and norm(value) == "collectable")) then return true end
+    end
+    local ok, tags = pcall(CollectionService.GetTags, CollectionService, instance)
+    if ok and type(tags) == "table" then
+        for _, tag in ipairs(tags) do
+            if hasFragmentName(tag) then return true end
+        end
     end
     if instance:IsA("ProximityPrompt") then
-        return hasFragmentName(instance.ObjectText)
-            or hasFragmentName(instance.ActionText)
+        if hasFragmentName(instance.ObjectText)
+            or hasFragmentName(instance.ActionText) then return true end
+        local node = instance.Parent
+        for _ = 1, 3 do
+            if not node or node == Workspace then break end
+            if hasFragmentName(node.Name) then return true end
+            node = node.Parent
+        end
     end
     return false
 end
@@ -449,6 +484,37 @@ local function diagnostics()
     for _, example in ipairs(examples) do print("[Zinc Mayhem] "..example) end
     return "Diagnostics printed to console (F9)"
 end
+local function pickupDiagnostics()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local origin = root and root.Position or Vector3.new()
+    local matches = {}
+    local prompts = 0
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and not insidePlayerCharacter(obj) then
+            prompts = prompts + 1
+            local parent = obj.Parent
+            local part = parent and (parent:IsA("BasePart") and parent
+                or parent:FindFirstChildWhichIsA("BasePart"))
+            local pos = part and part.Position or origin
+            table.insert(matches, {
+                prompt = obj, distance = (pos-origin).Magnitude,
+            })
+        end
+    end
+    table.sort(matches, function(a,b) return a.distance < b.distance end)
+    print("[Zinc Mayhem] Pickup diagnostics: "..prompts.." prompts, nearest 40:")
+    for i = 1, math.min(#matches, 40) do
+        local item = matches[i]
+        local obj = item.prompt
+        local parent = obj.Parent
+        local grand = parent and parent.Parent
+        print(("[Zinc Mayhem] #%d @%.0f studs | %s | Object=%q Action=%q | Parent=%s | Grand=%s | Fragment=%s")
+            :format(i, item.distance, obj:GetFullName(), obj.ObjectText,
+                obj.ActionText, parent and parent.Name or "(none)",
+                grand and grand.Name or "(none)", tostring(isGlitchFragment(obj))))
+    end
+    return "Pickup diagnostics in console (F9): "..prompts.." prompts"
+end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
@@ -487,6 +553,9 @@ info:AddLabel(IS_OVERHAUL and "Build: OVERHAUL TESTING (beta)" or "Build: MAYHEM
 info:AddLabel("Rounds and objectives; no linear Auto Floor.")
 info:AddButton({Name = "Copy diagnostics to console", ButtonText = "Inspect", Callback = function()
     window:SetStatus(diagnostics())
+end})
+info:AddButton({Name = "Scan pickup names to console", ButtonText = "Scan", Callback = function()
+    window:SetStatus(pickupDiagnostics())
 end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
 
@@ -534,8 +603,12 @@ fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Resc
         for instance, kind in pairs(indexed) do
             if kind == "fragment" then indexed[instance] = nil end
         end
-        for _, instance in ipairs(Workspace:GetDescendants()) do index(instance) end
-        window:SetStatus("Glitch names updated / map rescanned")
+        local found = 0
+        for _, instance in ipairs(Workspace:GetDescendants()) do
+            index(instance)
+            if indexed[instance] == "fragment" then found = found + 1 end
+        end
+        window:SetStatus("Fragment scan complete: "..found.." candidates")
     end})
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
     Default = state.exitESP, Callback = function(v) state.exitESP = v end})
@@ -605,10 +678,30 @@ end
 
 if state.bright then setFullbright(true) end
 if state.fovOn then setFov(true) end
-local clock = 0
+local clock, scanClock = 0, 0
 track(RunService.Heartbeat, function(dt)
     if closed then return end
     clock = clock + math.min(dt, 1)
+    scanClock = scanClock + math.min(dt, 1)
+    if scanClock >= 12 and state.fragmentESP then
+        scanClock = 0
+        local found = false
+        for instance, kind in pairs(indexed) do
+            if kind == "fragment" and instance.Parent
+                and instance:IsDescendantOf(Workspace) then found = true; break end
+        end
+        if not found then
+            task.spawn(function()
+                if closed then return end
+                local all = Workspace:GetDescendants()
+                for i, instance in ipairs(all) do
+                    if closed then return end
+                    index(instance)
+                    if i % 350 == 0 then task.wait() end
+                end
+            end)
+        end
+    end
     if clock < 0.5 then return end
     clock = 0
     applyVisuals()
