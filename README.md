@@ -133,27 +133,28 @@ The toggle is now **Door ESP**, with labels such as **Door A-212** for both upco
 
 Locker exit also sends a short W key event through VirtualInputManager when supported, alongside the existing movement request. Key-up is sent on pulse completion, route reset, confirmed exit, disable and unload. No key is pressed while a text box has focus. Availability depends on the client; live exit compatibility remains unverified.
 
-## DOORS: MAYHEM support (beta)
+## DOORS: MAYHEM + OVERHAUL TESTING (beta v0.2)
 
-Zinc Hub routes Roblox place **119040856156269** ([DOORS: MAYHEM](https://www.roblox.com/games/119040856156269/DOORS-MAYHEM)) to a separate [doors_mayhem.lua](doors_mayhem.lua) adapter. The regular loader preserves the existing ROOMS: Revisited behavior in other places.
+Zinc Hub routes the original [DOORS: MAYHEM](https://www.roblox.com/games/119040856156269/DOORS-MAYHEM) place `119040856156269` to the separate [doors_mayhem.lua](doors_mayhem.lua) adapter. The same adapter also supports **DM: OVERHAUL TESTING**, the public-test place linked from the original game's portal.
 
-Mayhem is a team-based asymmetric horror game, not a linear next-door game. This adapter uses our public ZincUI XP window with Right Control to toggle visibility.
+**The Overhaul testing Place ID is not yet independently verified.** The loader checks Roblox's own asset metadata for the exact experience titles `DM: OVERHAUL TESTING`, `DOORS: MAYHEM OVERHAUL TESTING`, or `DOORS: MAYHEM TESTING` and verifies creator `MISTICHISKII` (or original MAYHEM universe `6537995571`). If metadata cannot be read, unrecognized places retain the old ROOMS fallback. This title/creator check is a beta compatibility path, not proof of live runtime compatibility.
 
-- **Home**: role and team labels (when reported by player attributes/teams), object counts, F9 diagnostics, and Unload.
-- **ESP**: player highlights, optional opponents-only filtering, objectives (yellow), exits (green), and world entities (pink).
-- **Visual**: client FOV, fullbright, spectate next live player, XP/Dark/Midnight themes.
-- **Cleanup**: disconnects listeners, destroys highlights, restores camera and visuals on Unload or reload.
+Mayhem and Overhaul are team-based asymmetric survival games, not linear next-door games. The UI uses the standalone XP-style ZincUI with Right Control to toggle.
 
-Object markers match client-visible instance names only. Aliases cover glitch fragments, breaker/fuse boxes, levers, buttons, books, keys, handles, generators and exits. Live names and map variants may differ. Marker counts are bounded; the game adapter does not auto-complete objectives or reuse ROOMS Auto Floor.
+- **Home**: Mayhem classic vs Overhaul build label, player role/team (when exposed through client-visible attributes), counts, console diagnostics, Unload.
+- **ESP**: Player highlights with team filtering; objectives (yellow); exits (green); world entity models (pink).
+- **Glitch Fragment ESP**: dedicated toggle independent from ordinary objectives. Cyan highlights and floating `GLITCH FRAGMENT [NN studs]` text. Detects names such as `GlitchFragment`, `GlitchShard`, named attributes, and `ProximityPrompt` text; ignores plain `Glitch` to avoid confusing a monster with a fragment.
+- **Visual**: local FOV, fullbright, spectating, XP/Dark/Midnight themes.
+- **Cleanup**: destroys highlights and billboards, disconnects listeners, restores client camera and visual values.
 
-The Roblox listing currently mentions vALPHA 0.772 and a public-test portal. **Only the listed place ID is routed**. The portal might use another place ID. Home > Copy diagnostics to console prints PlaceId, GameId, and indexed paths to support future binding.
+Real object trees and naming in Overhaul remain unverified. Since object detection is client-visible and name-based, some objectives/fragments will not appear without a live diagnostic sample. ESP counts are bounded, and the adapter does not fire game remotes, solve objectives, or copy ROOMS Auto Floor.
 
-**Test this feature branch before merging:**
+**Direct testing loader for either Mayhem or Overhaul (feature branch):**
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
 ```
 
-After merging, use the regular loader. The client requires loadstring and game:HttpGet. Roblox live compatibility is not yet verified.
+After merging the PR, use the main `loader.lua` in Run. The client must support `game:HttpGet` and `loadstring`. Live Roblox gameplay is not yet tested.
 
-CI compiles doors_mayhem.lua and tests/mayhem_dispatch.lua; the dispatch regression test verifies routing and the existing fallback.
+The offline CI suite parses `doors_mayhem.lua` and runs `tests/mayhem_dispatch.lua` for classic/testing routes and false positives plus `tests/mayhem_fragments.lua` for real classification code and fake instance fixtures.
