@@ -1,8 +1,27 @@
 -- Zinc Hub | DOORS: MAYHEM (client game adapter)
--- First-party target place: 119040856156269
+-- Supports the public MAYHEM place and DM: OVERHAUL TESTING.
 -- Standalone ZincUI mode. No remotes, teleports, or arbitrary game hooks.
-local EXPECTED_PLACE = 119040856156269
-assert(game.PlaceId == EXPECTED_PLACE, "Zinc Mayhem: unsupported place "..tostring(game.PlaceId))
+local MAYHEM_MAIN = 119040856156269
+local MAYHEM_UNIVERSE = 6537995571
+local function normalizeTitle(value)
+    return tostring(value or ""):lower():gsub("[^%w]", "")
+end
+local function testingMetadata()
+    local ok, info = pcall(function()
+        return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId, Enum.InfoType.Asset)
+    end)
+    if not ok or type(info) ~= "table" then return false end
+    local title = normalizeTitle(info.Name)
+    local accepted = title == "dmoverhaultesting"
+        or title == "doorsmayhemoverhaultesting"
+        or title == "doorsmayhemtesting"
+    if not accepted then return false end
+    local creator = type(info.Creator) == "table" and normalizeTitle(info.Creator.Name) or ""
+    return creator == "mistichiskii" or game.GameId == MAYHEM_UNIVERSE
+end
+local IS_OVERHAUL = game.PlaceId ~= MAYHEM_MAIN and testingMetadata()
+assert(game.PlaceId == MAYHEM_MAIN or IS_OVERHAUL,
+    "Zinc Mayhem: unsupported place "..tostring(game.PlaceId))
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -35,7 +54,8 @@ assert(Zinc, "Zinc Mayhem: failed to load ZincUI")
 
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
-    exitESP = false, entityESP = false, bright = false, fovOn = false,
+    fragmentESP = false, exitESP = false, entityESP = false,
+    bright = false, fovOn = false,
     fov = 90, spectate = false,
 }
 local closed = false
@@ -47,10 +67,11 @@ local COLORS = {
     player = Color3.fromRGB(255, 80, 80),
     friend = Color3.fromRGB(95, 160, 255),
     objective = Color3.fromRGB(255, 220, 80),
+    fragment = Color3.fromRGB(80, 255, 255),
     exit = Color3.fromRGB(70, 255, 160),
     entity = Color3.fromRGB(255, 100, 200),
 }
-local LIMITS = {player = 10, objective = 12, exit = 4, entity = 4}
+local LIMITS = {player = 10, objective = 12, fragment = 16, exit = 4, entity = 4}
 
 local function track(signal, callback)
     local connection = signal:Connect(callback)
@@ -77,9 +98,37 @@ local function roleOf(player)
     end
     return "Unknown"
 end
+local function hasFragmentName(value)
+    local valueName = norm(value)
+    return valueName:find("glitchfragment", 1, true) ~= nil
+        or valueName:find("fragmentglitch", 1, true) ~= nil
+        or valueName == "glitchshard"
+        or valueName == "glitchpiece"
+end
+
+local function isGlitchFragment(instance)
+    if hasFragmentName(instance.Name) then return true end
+    if norm(instance.Name) == "fragment" then
+        local parent = instance.Parent
+        if parent and norm(parent.Name):find("glitch", 1, true) then return true end
+    end
+    for _, key in ipairs({"ItemName", "ItemId", "ItemType", "PickupName", "DisplayName"}) do
+        local value = instance:GetAttribute(key)
+        if type(value) == "string" and hasFragmentName(value) then return true end
+    end
+    if instance:IsA("ProximityPrompt") then
+        return hasFragmentName(instance.ObjectText)
+            or hasFragmentName(instance.ActionText)
+    end
+    return false
+end
+
 local function classify(instance)
-    if not (instance:IsA("Model") or instance:IsA("BasePart")) then return nil end
+    if not (instance:IsA("Model") or instance:IsA("BasePart")
+        or instance:IsA("ProximityPrompt")) then return nil end
     if instance:IsA("Model") and Players:GetPlayerFromCharacter(instance) then return nil end
+    if isGlitchFragment(instance) then return "fragment" end
+    if instance:IsA("ProximityPrompt") then return nil end
     local name = norm(instance.Name)
     if instance:IsA("Model") then
         for _, entity in ipairs({"figure", "seek", "rush", "eyes", "halt", "bramble", "dread"}) do
@@ -92,8 +141,7 @@ local function classify(instance)
         or name == "finalexit" or name == "finaldoor" or name == "escapeexit" then
         return "exit"
     end
-    if name == "glitchfragment" or name == "fragment" or name == "glitch"
-        or name == "breakerbox" or name == "fusebox" or name == "fuse"
+    if name == "breakerbox" or name == "fusebox" or name == "fuse"
         or name == "fuses" or name == "book" or name == "codebook"
         or name == "paper" or name == "lever" or name == "timelever"
         or name == "objective" or name == "objectiveitem"
@@ -103,13 +151,34 @@ local function classify(instance)
     end
     return nil
 end
+
 local function index(instance)
     local kind = classify(instance)
-    if kind then indexed[instance] = kind end
+    if not kind then return end
+    local target = instance
+    if instance:IsA("ProximityPrompt") then
+        target = instance.Parent
+        while target and target ~= Workspace
+            and not (target:IsA("BasePart") or target:IsA("Model")) do
+            target = target.Parent
+        end
+        if not target or target == Workspace then return end
+        -- Prefer the physical fragment model over a generic Handle.
+        local model = target:FindFirstAncestorOfClass("Model")
+        if model and isGlitchFragment(model) then target = model end
+    end
+    indexed[target] = kind
 end
 for _, instance in ipairs(Workspace:GetDescendants()) do index(instance) end
 track(Workspace.DescendantAdded, index)
-track(Workspace.DescendantRemoving, function(instance) indexed[instance] = nil end)
+track(Workspace.DescendantRemoving, function(instance)
+    indexed[instance] = nil
+    -- Prompt-derived entries disappear once their pickup prompt is removed.
+    if instance:IsA("ProximityPrompt") and isGlitchFragment(instance) then
+        local part = instance.Parent
+        if part and indexed[part] == "fragment" then indexed[part] = nil end
+    end
+end)
 
 local function positionOf(instance)
     if instance:IsA("BasePart") then return instance.Position end
@@ -122,35 +191,73 @@ end
 local function keepNearest(candidates, desired, kind)
     table.sort(candidates, function(a, b) return a.distance < b.distance end)
     for i = 1, math.min(#candidates, LIMITS[kind]) do
-        desired[candidates[i].instance] = candidates[i].color or COLORS[kind]
+        desired[candidates[i].instance] = {
+            color = candidates[i].color or COLORS[kind],
+            kind = kind, distance = candidates[i].distance,
+        }
     end
 end
 
 local markerFolder = Instance.new("Folder")
 markerFolder.Name = "ZincMayhemMarkers"
 markerFolder.Parent = Workspace.CurrentCamera or Workspace
-local function showMarker(instance, color)
-    local marker = markers[instance]
-    if not marker then
-        marker = Instance.new("Highlight")
-        marker.Name = "ZincMayhem"
-        marker.FillTransparency = 0.75
-        marker.OutlineTransparency = 0
-        marker.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        marker.Adornee = instance
-        marker.Parent = markerFolder
-        markers[instance] = marker
+local labelsFolder = Instance.new("Folder")
+labelsFolder.Name = "ZincMayhemLabels"
+labelsFolder.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local function showMarker(instance, details)
+    local record = markers[instance]
+    if not record then
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ZincMayhem"
+        highlight.FillTransparency = 0.75
+        highlight.OutlineTransparency = 0
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Adornee = instance
+        highlight.Parent = markerFolder
+        record = {highlight = highlight}
+        markers[instance] = record
     end
-    marker.FillColor = color
-    marker.OutlineColor = color
-    marker.Enabled = true
+    record.highlight.FillColor = details.color
+    record.highlight.OutlineColor = details.color
+    record.highlight.Enabled = true
+
+    if details.kind == "fragment" then
+        local part = instance:IsA("BasePart") and instance
+            or (instance:IsA("Model") and (instance.PrimaryPart
+                or instance:FindFirstChildWhichIsA("BasePart", true)))
+        if part and not record.billboard then
+            local billboard = Instance.new("BillboardGui")
+            billboard.Name = "GlitchFragmentESP"
+            billboard.AlwaysOnTop = true
+            billboard.Size = UDim2.fromOffset(165, 25)
+            billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0)
+            billboard.Adornee = part
+            billboard.Parent = labelsFolder
+            local text = Instance.new("TextLabel")
+            text.BackgroundTransparency = 1
+            text.Size = UDim2.fromScale(1, 1)
+            text.Font = Enum.Font.Code
+            text.TextSize = 13
+            text.TextStrokeTransparency = 0.2
+            text.TextColor3 = COLORS.fragment
+            text.Parent = billboard
+            record.billboard, record.text = billboard, text
+        end
+        if record.text then
+            record.text.Text = "GLITCH FRAGMENT  ["..math.floor(details.distance).. "m]"
+        end
+    elseif record.billboard then
+        record.billboard:Destroy()
+        record.billboard, record.text = nil, nil
+    end
 end
 local function updateESP()
     local camera = Workspace.CurrentCamera
     if camera and markerFolder.Parent ~= camera then markerFolder.Parent = camera end
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
-    local candidates = {player = {}, objective = {}, exit = {}, entity = {}}
+    local candidates = {player = {}, objective = {}, fragment = {}, exit = {}, entity = {}}
     local localRole = roleOf(LocalPlayer)
     if state.playerESP then
         for _, other in ipairs(Players:GetPlayers()) do
@@ -170,6 +277,7 @@ local function updateESP()
     end
     for instance, kind in pairs(indexed) do
         if (kind == "objective" and state.objectiveESP)
+            or (kind == "fragment" and state.fragmentESP)
             or (kind == "exit" and state.exitESP)
             or (kind == "entity" and state.entityESP) then
             if instance.Parent and instance:IsDescendantOf(Workspace) then
@@ -183,14 +291,19 @@ local function updateESP()
         end
     end
     local desired = {}
-    for _, kind in ipairs({"player", "objective", "exit", "entity"}) do
+    for _, kind in ipairs({"player", "objective", "fragment", "exit", "entity"}) do
         keepNearest(candidates[kind], desired, kind)
     end
     for instance, marker in pairs(markers) do
-        if not desired[instance] then marker:Destroy(); markers[instance] = nil end
+        if not desired[instance] then
+            marker.highlight:Destroy()
+            if marker.billboard then marker.billboard:Destroy() end
+            markers[instance] = nil
+        end
     end
-    for instance, color in pairs(desired) do showMarker(instance, color) end
-    return #candidates.player, #candidates.objective, #candidates.exit, #candidates.entity
+    for instance, details in pairs(desired) do showMarker(instance, details) end
+    return #candidates.player, #candidates.objective, #candidates.fragment,
+        #candidates.exit, #candidates.entity
 end
 
 local function applyVisuals()
@@ -255,7 +368,7 @@ local function nextSpectate()
     return "Spectating "..list[spectateIndex].Parent.Name
 end
 local function diagnostics()
-    local counted = {player = 0, objective = 0, exit = 0, entity = 0}
+    local counted = {player = 0, objective = 0, fragment = 0, exit = 0, entity = 0}
     local examples = {}
     for inst, kind in pairs(indexed) do
         counted[kind] = counted[kind] + 1
@@ -264,15 +377,16 @@ local function diagnostics()
     print("[Zinc Mayhem] PlaceId="..tostring(game.PlaceId)
         .." GameId="..tostring(game.GameId).." Team="..tostring(LocalPlayer.Team))
     print("[Zinc Mayhem] Local role="..roleOf(LocalPlayer)
-        .." objects="..counted.objective.." exits="..counted.exit
-        .." world entities="..counted.entity)
+        .." objects="..counted.objective.." fragments="..counted.fragment
+        .." exits="..counted.exit.." world entities="..counted.entity)
     for _, example in ipairs(examples) do print("[Zinc Mayhem] "..example) end
     return "Diagnostics printed to console (F9)"
 end
 
 local window = Zinc:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = "MAYHEM ADAPTER 0.1  |  XP",
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.2 | XP"
+        or "MAYHEM ADAPTER 0.2 | XP",
     Theme = "XP",
     ToggleKey = Enum.KeyCode.RightControl,
 })
@@ -287,20 +401,23 @@ unload = function()
     setFullbright(false)
     restoreCamera()
     markerFolder:Destroy()
+    labelsFolder:Destroy()
     table.clear(markers)
     table.clear(indexed)
     if env.ZincMayhem and env.ZincMayhem.Unload == unload then env.ZincMayhem = nil end
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.1.0", PlaceId = game.PlaceId}
-window:SetStatus("DOORS: MAYHEM detected | ready")
+env.ZincMayhem = {Unload = unload, Version = "0.2.0",
+    PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL}
+window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
 local home = window:CreateTab("Home")
 local info = home:CreateSection("Session")
 roleLabel = info:AddLabel("Role: detecting")
 countLabel = info:AddLabel("ESP objects: scanning")
-info:AddLabel("Mayhem has rounds, objectives and exits; no Auto Floor.")
+info:AddLabel(IS_OVERHAUL and "Build: OVERHAUL TESTING (beta)" or "Build: MAYHEM classic")
+info:AddLabel("Rounds and objectives; no linear Auto Floor.")
 info:AddButton({Name = "Copy diagnostics to console", ButtonText = "Inspect", Callback = function()
     window:SetStatus(diagnostics())
 end})
@@ -315,6 +432,9 @@ playersSection:AddToggle({Name = "Opponents only (unknown roles: all)", Flag = "
 local mapSection = esp:CreateSection("Map objectives")
 mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
     Default = false, Callback = function(v) state.objectiveESP = v end})
+mapSection:AddToggle({Name = "Glitch Fragment ESP (cyan + distance)",
+    Flag = "mayhem_fragments", Default = false,
+    Callback = function(v) state.fragmentESP = v end})
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
     Default = false, Callback = function(v) state.exitESP = v end})
 mapSection:AddToggle({Name = "World entities (pink)", Flag = "mayhem_entities",
@@ -349,11 +469,12 @@ track(RunService.Heartbeat, function(dt)
     if clock < 0.5 then return end
     clock = 0
     applyVisuals()
-    local playersCount, objectiveCount, exitCount, entityCount = updateESP()
+    local playersCount, objectiveCount, fragmentCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
     roleLabel:Set("Role: "..roleOf(LocalPlayer).." | Team: "..team)
     countLabel:Set("Seen: "..playersCount.." players / "..objectiveCount
-        .." objectives / "..exitCount.." exits / "..entityCount.." entities")
+        .." objectives / "..fragmentCount.." fragments / "
+        ..exitCount.." exits / "..entityCount.." entities")
 end)
 
 return env.ZincMayhem
