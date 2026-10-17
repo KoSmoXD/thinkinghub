@@ -224,6 +224,14 @@ function Module.new(deps)
     end
     function self:Inspect()
         local rows={}
+        local pg=self.player:FindFirstChild("PlayerGui")
+        local visibleGUIs=0
+        for _,item in ipairs(children(pg)) do
+            if isa(item,"ScreenGui") and visible(item) and visibleGUIs<20 then
+                visibleGUIs=visibleGUIs+1
+                rows[#rows+1]="[Zinc Mayhem] active GUI: "..item.Name
+            end
+        end
         local screens=guiRoots()
         rows[#rows+1]="[Zinc Mayhem] visible fragment puzzle GUIs: "..#screens
         for _,root in ipairs(screens) do
