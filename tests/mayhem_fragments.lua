@@ -32,6 +32,9 @@ local function fake(name, kind, opts)
         return self.kind == expected or (self.kind == "BasePart" and expected == "BasePart")
     end
     function instance:GetAttribute(key) return self.attrs[key] end
+    function instance:FindFirstChildWhichIsA(name, recursive)
+        return opts.prompt
+    end
     return instance
 end
 local function verify(name, instance, expected)
