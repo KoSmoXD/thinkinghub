@@ -1,0 +1,98 @@
+-- Mocked Obsidian bridge contract test (Lua 5.4).
+local h = assert(io.open("lib/MayhemObsidian.lua", "rb"))
+local source = h:read("*a"); h:close()
+local registered, onUnload, rawLibrary = {}, nil, {}
+local function control(default)
+    local o = {Value = default}
+    function o:OnChanged(callback) self.callback = callback end
+    function o:Fire(value) self.Value = value; if self.callback then self.callback(value) end end
+    return o
+end
+local function group()
+    local g = {}
+    function g:AddLabel(text)
+        local label = {text = text}
+        function label:SetText(value) self.text = value end
+        table.insert(registered, {kind = "label", label = label})
+        return label
+    end
+    function g:AddButton(opts)
+        assert(type(opts.Func) == "function")
+        return {Click = function() opts.Func() end}
+    end
+    function g:AddToggle(id, opts)
+        assert(type(id) == "string" and type(opts.Default) == "boolean")
+        return control(opts.Default)
+    end
+    function g:AddDropdown(id, opts)
+        assert(type(opts.Values) == "table" and type(opts.Default) == "string")
+        return control(opts.Default)
+    end
+    function g:AddInput(id, opts)
+        assert(type(opts.Text) == "string")
+        return control(opts.Default)
+    end
+    function g:AddSlider(id, opts)
+        assert(type(opts.Min) == "number" and type(opts.Max) == "number")
+        return control(opts.Default)
+    end
+    return g
+end
+function rawLibrary:CreateWindow()
+    return {AddTab = function(_,name)
+        assert(type(name) == "string")
+        return {AddLeftGroupbox = function() return group() end,
+            AddRightGroupbox = function() return group() end}
+    end}
+end
+function rawLibrary:Notify() end
+function rawLibrary:OnUnload(callback) onUnload = callback end
+function rawLibrary:Unload()
+    local callback = onUnload
+    onUnload = nil
+    if callback then callback() end
+end
+local sandbox = {
+    game = {HttpGet = function() return "mock-ob-library" end},
+    loadstring = function(text)
+        assert(text == "mock-ob-library")
+        return function() return rawLibrary end
+    end
+}
+setmetatable(sandbox,{__index=_G})
+local ui=assert(load(source, "@MayhemObsidian", "t", sandbox))()
+local window=ui:CreateWindow({Title="Zinc Mayhem",Subtitle="Test"})
+local home=window:CreateTab("Home")
+local section=home:CreateSection("General")
+local label=section:AddLabel("Original")
+label:Set("Updated")
+window:SetStatus("Ready")
+assert(registered[1].label.text == "Ready")
+assert(registered[2].label.text == "Updated")
+local toggleValue
+local toggle=section:AddToggle({Name="Toggle",Default=true,Callback=function(v)
+    toggleValue=v
+end})
+toggle:Fire(false)
+assert(toggleValue == false)
+local dropdownValue
+local dropdown=section:AddDropdown({Name="UI library",Default="Zinc",
+    Options={"Zinc","Obsidian"},Callback=function(v) dropdownValue=v end})
+dropdown:Fire("Obsidian")
+assert(dropdownValue=="Obsidian")
+local amount
+section:AddSlider({Name="FOV",Min=50,Max=120,Default=90,Callback=function(v)
+    amount=v
+end}):Fire(110)
+assert(amount==110)
+local input
+section:AddTextbox({Name="Aliases",Default="",Callback=function(v) input=v end}):Fire("fragment")
+assert(input=="fragment")
+local clicked=false
+section:AddButton({Name="Reset",Callback=function()clicked=true end}):Click()
+assert(clicked)
+local count=0
+window.Destroy=function() count=count+1 end
+rawLibrary:Unload()
+assert(count == 1)
+print("mayhem Obsidian facade contract: ok")
