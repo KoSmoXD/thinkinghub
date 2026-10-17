@@ -105,7 +105,8 @@ instance:Step(1)
 assert(#clicked==3 and clicked[3]==wrong,
     "explicit parent CorrectAnswer should be respected")
 local strings=instance:Inspect()
-assert(strings[1]:find("1"),"diagnostics lists puzzle UI")
+assert(table.concat(strings,"\n"):find("visible fragment puzzle GUIs: 1",1,true),
+    "diagnostics lists active puzzle UI")
 -- Roblox ImageButton has no Text property; this must not crash the handler.
 frame.Attributes.CorrectAnswer=nil
 local image=frame:Add(node("ImageButton","CorrectIcon",{IsCorrect=true}))
