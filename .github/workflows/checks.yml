@@ -14,6 +14,7 @@ jobs:
         run: |
           luac5.4 -p loader.lua
           luac5.4 -p rooms_revisited.lua
+          luac5.4 -p doors_mayhem.lua
           luac5.4 -p lib/ZincAdapter.lua
           luac5.4 -p lib/ZincUI.lua
           luac5.4 -p tests/smoke.lua
