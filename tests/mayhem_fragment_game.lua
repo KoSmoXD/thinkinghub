@@ -106,9 +106,20 @@ assert(#clicked==3 and clicked[3]==wrong,
     "explicit parent CorrectAnswer should be respected")
 local strings=instance:Inspect()
 assert(strings[1]:find("1"),"diagnostics lists puzzle UI")
+-- Roblox ImageButton has no Text property; this must not crash the handler.
+frame.Attributes.CorrectAnswer=nil
+local image=frame:Add(node("ImageButton","CorrectIcon",{IsCorrect=true}))
+setmetatable(image,{__index=function(_,key)
+    if key=="Text" then error("Text is not a valid member of ImageButton") end
+end})
+screen.Attributes.Stage=3
+instance:Step(1)
+assert(#clicked==4 and clicked[4]==image,
+    "ImageButton answer must work without Text")
+assert(#instance:Inspect()>0,"ImageButton inspector must not read missing Text")
 instance:SetEnabled(false)
 instance:Step(1)
-assert(#clicked==3,"disable stops auto clicks")
+assert(#clicked==4,"disable stops auto clicks")
 local entity=true
 local game=Module.new({
     player=player,workspace=world,
@@ -133,5 +144,5 @@ screen.Enabled=false
 entity=false
 game:SetEnabled(true)
 game:Step(1)
-assert(#clicked==3,"unrelated ZincUI must not be interpreted as puzzle")
+assert(#clicked==4,"unrelated ZincUI must not be interpreted as puzzle")
 print("mayhem fragment game: nearby prompts, explicit GUI answers, debounce, diagnostics, entity safety OK")
