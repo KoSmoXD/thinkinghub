@@ -67,8 +67,11 @@ function Module.new(player)
         return node and not excluded(node)
     end
     local function cap(source, current)
-        local locations = {source.object, source.object.Parent,
-            player.Character, player}
+        local locations = {}
+        for _, item in ipairs({source.object, source.object.Parent or false,
+            player.Character or false, player}) do
+            if item then locations[#locations+1] = item end
+        end
         for _, item in ipairs(locations) do
             if item then
                 for _, name in ipairs(MAXIMUM) do
