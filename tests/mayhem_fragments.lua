@@ -2,15 +2,15 @@
 local handle = assert(io.open("doors_mayhem.lua", "rb"))
 local source = handle:read("*a")
 handle:close()
-local first = assert(source:find("local function hasFragmentName(", 1, true))
+local first = assert(source:find("local fragmentAliases = {}", 1, true))
 local last = assert(source:find("\nlocal function index(instance)", first, true))
 local extracted = source:sub(first, last - 1)
 local prefix = [[
 local function norm(s) return tostring(s or ""):lower():gsub("[^%w]", "") end
 local Players = {GetPlayerFromCharacter = function() return nil end}
 ]]
-local module = assert(load(prefix .. extracted .. "\nreturn classify\n", "@mayhem_classifier"))
-local classify = module()
+local module = assert(load(prefix .. extracted .. "\nreturn classify, fragmentAliases\n", "@mayhem_classifier"))
+local classify, aliases = module()
 
 local function fake(name, kind, opts)
     opts = opts or {}
@@ -46,4 +46,9 @@ verify("unrelated fragment", fake("Fragment", "BasePart"), nil)
 verify("normal item", fake("Apple", "BasePart"), nil)
 verify("fuse stays objective", fake("FuseBox", "Model"), "objective")
 verify("exit stays exit", fake("ExitDoor", "Model"), "exit")
+aliases.corruptedshard = true
+verify("overhaul alias", fake("CorruptedShard", "BasePart"), "fragment")
+verify("overhaul alias model suffix", fake("CorruptedShardPickup", "Model"), "fragment")
+aliases.corruptedshard = nil
+verify("alias clears", fake("CorruptedShard", "BasePart"), nil)
 print("mayhem fragment classifier: ok")
