@@ -149,12 +149,17 @@ Mayhem and Overhaul are team-based asymmetric survival games, not linear next-do
 
 Real object trees and naming in Overhaul remain unverified. Since object detection is client-visible and name-based, some objectives/fragments will not appear without a live diagnostic sample. ESP counts are bounded, and the adapter does not fire game remotes, solve objectives, or copy ROOMS Auto Floor.
 
+**Glitch Fragment ESP usage:** open **ESP > Map objectives**, enable **Glitch Fragment ESP** to see cyan highlights and distance labels. If Overhaul uses different pickup names, enter them under **ESP > Glitch Fragment detection > Extra fragment aliases**, then press **Apply aliases and rescan**. Existing objective ESP works independently.
+
+**Manual Overhaul override:** when the testing portal uses an unknown Place ID or Roblox blocks metadata lookup, run the two-line loader below. The override is intentionally opt-in; the normal dispatcher still requires a verified name/creator combination. The fragment scanner only inspects client-visible objects and does not manufacture pickups.
+
 **Direct testing loader for either Mayhem or Overhaul (feature branch):**
 
 ```lua
+getgenv().ZincMayhemForceOverhaul = true
 loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
 ```
 
 After merging the PR, use the main `loader.lua` in Run. The client must support `game:HttpGet` and `loadstring`. Live Roblox gameplay is not yet tested.
 
-The offline CI suite parses `doors_mayhem.lua` and runs `tests/mayhem_dispatch.lua` for classic/testing routes and false positives plus `tests/mayhem_fragments.lua` for real classification code and fake instance fixtures.
+The offline CI suite parses `doors_mayhem.lua` and runs `tests/mayhem_dispatch.lua` for classic/testing routes and false positives plus `tests/mayhem_fragments.lua` for real classification code and fake instance fixtures, and `tests/mayhem_guard.lua` for testing metadata/override behavior.
