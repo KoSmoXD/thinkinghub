@@ -45,7 +45,9 @@ function rawLibrary:MakeDraggable(frame, grip, ignoreToggled, mainWindow)
     assert(ignoreToggled == false and mainWindow == true)
     capturedGrip = grip
 end
-function rawLibrary:CreateWindow()
+function rawLibrary:CreateWindow(opts)
+    assert(opts.ToggleKeybind == Enum.KeyCode.RightShift,
+        "Obsidian window must use RightShift for toggle")
     return {MainFrame = mainFrame, AddTab = function(_,name)
         assert(type(name) == "string")
         return {AddLeftGroupbox = function() return group() end,
@@ -65,6 +67,7 @@ local sandbox = {
         return {ClassName = class}
     end},
     UDim2 = {new = function(...) return {...} end},
+    Enum = {KeyCode = {RightShift = "RightShift", RightControl = "RightControl"}},
     game = {HttpGet = function() return "mock-ob-library" end},
     loadstring = function(text)
         assert(text == "mock-ob-library")
@@ -109,4 +112,10 @@ local count=0
 window.Destroy=function() count=count+1 end
 rawLibrary:Unload()
 assert(count == 1)
-print("mayhem Obsidian facade contract: ok")
+-- Regression: Zinc should keep RightControl and Obsidian should use RightShift.
+local sourceFile = assert(io.open("doors_mayhem.lua", "rb"))
+local moduleCode = sourceFile:read("*a")
+sourceFile:close()
+assert(moduleCode:find('ToggleKey = selectedStyle == "Obsidian"', 1, true))
+assert(moduleCode:find("Enum.KeyCode.RightShift or Enum.KeyCode.RightControl", 1, true))
+print("mayhem Obsidian RightShift toggle + facade contract: ok")
