@@ -8,6 +8,9 @@ local extracted = source:sub(first, last - 1)
 local prefix = [[
 local function norm(s) return tostring(s or ""):lower():gsub("[^%w]", "") end
 local Workspace = {}
+local CollectionService = {GetTags = function(_, object)
+    return object.tags or {}
+end}
 local LocalPlayer = {Character = {Name = "LocalAvatar"}}
 function LocalPlayer.Character:IsA(name) return name == "Model" end
 local Players = {GetPlayerFromCharacter = function(_, instance)
@@ -78,4 +81,11 @@ verify("other player's carried fragment", fake("GlitchFragment", "BasePart",
     {parent = remoteTool}), nil)
 verify("world fragments unaffected", fake("GlitchFragment", "Model",
     {parent = workspace}), "fragment")
+local tagged = fake("PickupModel", "Model", {parent = workspace})
+tagged.tags = {"GlitchFragment"}
+verify("tag-based fragment", tagged, "fragment")
+verify("generic nearby item not fragment", fake("WaterBottle", "Model",
+    {parent = workspace}), nil)
+verify("glitch gate not fragment", fake("GlitchGate", "Model",
+    {parent = workspace}), nil)
 print("mayhem fragment + character exclusion: ok")
