@@ -120,7 +120,7 @@ function M.new(deps)
         now=0,lastScan=-math.huge,lastPlan=-math.huge,
         lastMove=-math.huge,lastSample=0,lastPos=nil,
         stagnant=0,stuck=0,plans=0,abilities=0,
-        status="Off",goal=nil,
+        status="Off",goal=nil,lastCharacter=nil,
         cooldownUntil=-math.huge,slotTimes={},
         binds={},
         async=deps.async or function(fn) task.spawn(fn) end,
@@ -183,8 +183,14 @@ function M.new(deps)
         self.target=nil;self.profile=nil
         self.stagnant=0;self.lastPos=nil;self.lastSample=self.now
         self.lastScan=-math.huge;self.lastPlan=-math.huge
-        if self.enabled then self.status="Waiting for entity role"
-        else stopMovement();self.status="Off" end
+        if self.enabled then
+            self.lastCharacter=self.player.Character
+            self.status="Waiting for entity role"
+        else
+            self.lastCharacter=nil
+            stopMovement()
+            self.status="Off"
+        end
     end
     function self:FindNearest()
         local _,root=rig(self.player)
@@ -243,7 +249,7 @@ function M.new(deps)
                 return
             end
             local succeeded,waypoints=pcall(function() return path:GetWaypoints() end)
-            if not succeeded or #waypoints==0 then
+            if not succeeded or type(waypoints)~="table" or #waypoints==0 then
                 pcall(function() path:Destroy() end)
                 self.route={{Position=to}}
                 self.status="Empty path: direct attempt"
@@ -295,9 +301,20 @@ function M.new(deps)
         local dt=type(delta)=="number" and math.max(0,math.min(delta,1)) or 0
         self.now=self.now+dt
         local profile=self:CurrentProfile()
+        local character=self.player.Character
+        if character~=self.lastCharacter then
+            dismissRoute()
+            self.lastCharacter=character
+            self.target=nil
+            self.lastPlan=-math.huge
+            self.lastPos=nil
+            self.stagnant=0
+        end
         if profile~=self.profile then
             dismissRoute();self.profile=profile;self.target=nil
             self.lastScan=-math.huge
+            self.lastPlan=-math.huge
+            if not profile then stopMovement() end
         end
         if not profile then
             self.status="Not an entity (or role hidden)"
@@ -316,6 +333,7 @@ function M.new(deps)
                 dismissRoute()
                 self.lastPlan=-math.huge
                 self.lastPos=nil;self.stagnant=0
+                if not newTarget then stopMovement() end
             end
         end
         if not self.target then
