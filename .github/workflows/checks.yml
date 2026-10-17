@@ -18,5 +18,8 @@ jobs:
           luac5.4 -p lib/ZincAdapter.lua
           luac5.4 -p lib/ZincUI.lua
           luac5.4 -p tests/smoke.lua
+          luac5.4 -p tests/mayhem_dispatch.lua
       - name: Hub mocked regression tests
-        run: lua5.4 tests/smoke.lua
+        run: |
+          lua5.4 tests/smoke.lua
+          lua5.4 tests/mayhem_dispatch.lua
