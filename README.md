@@ -31,7 +31,7 @@ Choose **Home > General > UI style > Zinc** to replace Obsidian with the public 
 
 Switching styles rebuilds the client hub, preserves currently selected feature values (including colors, method, speed and toggles), and restores movement-related toggles last. The chosen style remains selected during the current client environment session. A fresh client session defaults to Obsidian; saved config files remain unchanged. If ZincUI fails to download or initialize, the hub attempts Obsidian fallback.
 
-The custom ZincUI style is a single Windows XP-inspired application window, with a blue title bar, left navigation, square beveled controls and bottom status bar. It supports mouse/touch, sections, dropdowns, buttons, sliders, color pickers, notifications and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
+The custom ZincUI style is a single Windows XP-inspired application window, with a blue title bar, left navigation, square beveled controls and bottom status bar. Drag the window using the title bar, the bottom status bar, or the narrow lower edge with mouse or touch. It supports mouse/touch, sections, dropdowns, buttons, sliders, color pickers, notifications and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
 
 ## Movement and interaction
 
