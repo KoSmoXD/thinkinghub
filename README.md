@@ -163,3 +163,19 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/f
 After merging the PR, use the main `loader.lua` in Run. The client must support `game:HttpGet` and `loadstring`. Live Roblox gameplay is not yet tested.
 
 The offline CI suite parses `doors_mayhem.lua` and runs `tests/mayhem_dispatch.lua` for classic/testing routes and false positives plus `tests/mayhem_fragments.lua` for real classification code and fake instance fixtures, and `tests/mayhem_guard.lua` for testing metadata/override behavior.
+
+
+### Mayhem UI/ESP bug fixes (v0.3 beta)
+
+- The pink color previously used for generic world entities is now orange. Player ESP defaults to **green** for confirmed opponents, **blue** for same-team players, and **cyan** when team/role information is missing. The **Player ESP color** dropdown changes the confirmed-opponent color (Green/Blue/Cyan/Yellow/Red).
+- The Mayhem module now supports **Home / Visual > Interface > UI library > Zinc or Obsidian**, using the shared Obsidian library with a compatibility facade in [lib/MayhemObsidian.lua](lib/MayhemObsidian.lua). Selecting a new UI style reruns the game module, copies feature settings and fragment aliases, and unloads the old window. This is not the XP theme selector.
+- Fragment detection now recognizes eligible names, text on pickup prompts, common item attributes, CollectionService tags, and fragment containers. With fragment ESP enabled and no candidates detected, a throttled, incremental rescan runs periodically. **Overhaul may still use undisclosed runtime names**, so Home has a **Scan pickup names to console** diagnostic button, which prints the nearest 40 standard ProximityPrompts with their paths, labels and likely fragment matches. The game's own guide describes glitch fragments as a second-stage Hotel objective, so none may be loaded in the lobby.
+- The user-uploaded short clip shows the pre-round lobby and a ZincUI window; no spawned fragment is visible in that clip. Obsidian and actual pickup mapping require a live round test.
+- New `tests/mayhem_ui.lua` validates the Obsidian facade control contract in a mocked Lua environment. GitHub CI continues compiling the Mayhem module and testing the loader and classifiers.
+
+**Development-branch loader:**
+
+```lua
+getgenv().ZincMayhemForceOverhaul = true
+loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
+```
