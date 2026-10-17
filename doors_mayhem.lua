@@ -91,7 +91,7 @@ end
 
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
-    fragmentESP = false, bookESP = false, leverESP = false,
+    fragmentESP = false, fragmentGame = false, bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false, infiniteStamina = false,
     entityAuto = false, entityAbility = true, entityProfile = "Auto",
@@ -552,6 +552,57 @@ track(Workspace.DescendantRemoving, function(instance)
     end
 end)
 
+-- Hotel Glitch Fragment objective: local prompt interaction + clearly
+-- exposed GUI answers only. Real puzzle internals can differ by version.
+local fragmentGameController
+do
+    local url = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemFragmentGame.lua"
+    local ok, result = pcall(function()
+        local source = game:HttpGet(url)
+        local chunk, err = loadstring(source, "@ZincMayhem/FragmentGame")
+        assert(chunk, err)
+        local module = chunk()
+        local virtualInput
+        pcall(function() virtualInput = game:GetService("VirtualInputManager") end)
+        local clickButton = function(button)
+            if not virtualInput then return false end
+            local pos, size = button.AbsolutePosition, button.AbsoluteSize
+            if not (pos and size) then return false end
+            local x, y = pos.X + size.X/2, pos.Y + size.Y/2
+            local success = pcall(function()
+                virtualInput:SendMouseButtonEvent(x, y, 0, true, game, 0)
+                virtualInput:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            end)
+            return success
+        end
+        local activatePrompt = function(prompt)
+            if type(fireproximityprompt) == "function" then
+                local success = pcall(fireproximityprompt, prompt)
+                if success then return true end
+            end
+            -- Native hold works for an ordinary proximity prompt in reach.
+            local okBegin = pcall(function() prompt:InputHoldBegin() end)
+            if not okBegin then return false end
+            local duration = math.max(0,tonumber(prompt.HoldDuration) or 0)
+            task.delay(duration + 0.1, function()
+                pcall(function() prompt:InputHoldEnd() end)
+            end)
+            return true
+        end
+        return module.new({
+            player = LocalPlayer, workspace=Workspace,
+            isFragment=isGlitchFragment, inCharacter=insidePlayerCharacter,
+            isEntity=function() return roleOf(LocalPlayer) == "Entity" end,
+            clickButton=clickButton, activatePrompt=activatePrompt,
+        })
+    end)
+    if ok then fragmentGameController=result
+    else warn("[Zinc Mayhem] Fragment Game unavailable: "..tostring(result)) end
+end
+if state.fragmentGame and fragmentGameController then
+    fragmentGameController:SetEnabled(true)
+end
+
 local function positionOf(instance)
     if instance:IsA("BasePart") then return instance.Position end
     if instance:IsA("Model") then
@@ -815,8 +866,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.8 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.8 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.9 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.9 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -833,6 +884,7 @@ unload = function()
     restoreCamera()
     if staminaController then staminaController:Unload() end
     if entityController then entityController:Unload() end
+    if fragmentGameController then fragmentGameController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
     table.clear(indexed)
@@ -840,7 +892,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.8.0",
+env.ZincMayhem = {Unload = unload, Version = "0.9.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
@@ -1063,6 +1115,30 @@ fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Resc
         end
         window:SetStatus("Fragment scan complete: "..found.." candidates")
     end})
+local fragmentGameSection = esp:CreateSection("Hotel Fragment Game (experimental)")
+fragmentGameSection:AddLabel("Auto-interact in reach; solve only explicitly marked GUI answers.")
+fragmentGameSection:AddLabel("Does not guess unknown puzzle sequences or use game remotes.")
+local fragmentGameStatus=fragmentGameSection:AddLabel(
+    fragmentGameController and fragmentGameController:Status() or "Module unavailable")
+fragmentGameSection:AddToggle({
+    Name="Auto Glitch Fragment Game (beta)", Flag="mayhem_fragment_game",
+    Default=state.fragmentGame,
+    Callback=function(enabled)
+        state.fragmentGame=enabled
+        if fragmentGameController then
+            fragmentGameController:SetEnabled(enabled)
+            window:SetStatus(fragmentGameController:Status())
+        else window:SetStatus("Fragment game controller unavailable") end
+    end})
+fragmentGameSection:AddButton({
+    Name="Inspect visible fragment puzzle (F9)", ButtonText="Inspect",
+    Callback=function()
+        if not fragmentGameController then return end
+        for _,line in ipairs(fragmentGameController:Inspect()) do print(line) end
+        window:SetStatus("Fragment puzzle inspection printed to F9")
+    end})
+fragmentGameSection:AddLabel("If status says no explicit answer, send F9 output for mapping.")
+
 local puzzleSection = esp:CreateSection("Library / Cellar detection")
 puzzleSection:AddTextbox({Name = "Additional book names (comma-separated)",
     Flag = "mayhem_book_names", Default = customBookNames,
@@ -1209,6 +1285,7 @@ track(RunService.Heartbeat, function(dt)
     if closed then return end
     if staminaController then staminaController:Step(dt) end
     if entityController then entityController:Step(dt) end
+    if fragmentGameController then fragmentGameController:Step(dt) end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
     if scanClock >= 12 and (state.fragmentESP or state.bookESP
@@ -1239,6 +1316,9 @@ track(RunService.Heartbeat, function(dt)
     applyVisuals()
     if staminaController then staminaLabel:Set(staminaController:Status()) end
     if entityController then entityStatus:Set(entityController:Status()) end
+    if fragmentGameController then
+        fragmentGameStatus:Set(fragmentGameController:Status())
+    end
     local playersCount, objectiveCount, fragmentCount, bookCount,
         leverCount, keyCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
