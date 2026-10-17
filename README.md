@@ -143,13 +143,13 @@ Mayhem and Overhaul are team-based asymmetric survival games, not linear next-do
 
 - **Home**: Mayhem classic vs Overhaul build label, player role/team (when exposed through client-visible attributes), counts, console diagnostics, Unload.
 - **ESP**: Player highlights with team filtering; objectives (yellow); exits (green); world entity models (pink).
-- **Glitch Fragment ESP**: dedicated toggle independent from ordinary objectives. Cyan highlights and floating `GLITCH FRAGMENT [NN studs]` text. Detects names such as `GlitchFragment`, `GlitchShard`, named attributes, and `ProximityPrompt` text; ignores plain `Glitch` to avoid confusing a monster with a fragment.
+- **Glitch Fragment ESP**: dedicated toggle independent from ordinary objectives. Pink highlights and floating `GLITCH FRAGMENT [NN studs]` text. Detects names such as `GlitchFragment`, `GlitchShard`, named attributes, and `ProximityPrompt` text; ignores plain `Glitch` to avoid confusing a monster with a fragment.
 - **Visual**: local FOV, fullbright, spectating, XP/Dark/Midnight themes.
 - **Cleanup**: destroys highlights and billboards, disconnects listeners, restores client camera and visual values.
 
 Real object trees and naming in Overhaul remain unverified. Since object detection is client-visible and name-based, some objectives/fragments will not appear without a live diagnostic sample. ESP counts are bounded, and the adapter does not fire game remotes, solve objectives, or copy ROOMS Auto Floor.
 
-**Glitch Fragment ESP usage:** open **ESP > Map objectives**, enable **Glitch Fragment ESP** to see cyan highlights and distance labels. If Overhaul uses different pickup names, enter them under **ESP > Glitch Fragment detection > Extra fragment aliases**, then press **Apply aliases and rescan**. Existing objective ESP works independently.
+**Glitch Fragment ESP usage:** open **ESP > Map objectives**, enable **Glitch Fragment ESP** to see pink highlights and distance labels. If Overhaul uses different pickup names, enter them under **ESP > Glitch Fragment detection > Extra fragment aliases**, then press **Apply aliases and rescan**. Existing objective ESP works independently.
 
 **Manual Overhaul override:** when the testing portal uses an unknown Place ID or Roblox blocks metadata lookup, run the two-line loader below. The override is intentionally opt-in; the normal dispatcher still requires a verified name/creator combination. The fragment scanner only inspects client-visible objects and does not manufacture pickups.
 
