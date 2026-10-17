@@ -411,15 +411,17 @@ local function showMarker(instance, details)
     record.highlight.OutlineColor = details.color
     record.highlight.Enabled = true
 
-    if details.kind == "fragment" then
+    local labels = {fragment = "GLITCH FRAGMENT", book = "GLITCH BOOK", lever = "LEVER"}
+    local labelText = labels[details.kind]
+    if labelText then
         local part = instance:IsA("BasePart") and instance
             or (instance:IsA("Model") and (instance.PrimaryPart
                 or instance:FindFirstChildWhichIsA("BasePart", true)))
         if part and not record.billboard then
             local billboard = Instance.new("BillboardGui")
-            billboard.Name = "GlitchFragmentESP"
+            billboard.Name = "MayhemPuzzleESP"
             billboard.AlwaysOnTop = true
-            billboard.Size = UDim2.fromOffset(165, 25)
+            billboard.Size = UDim2.fromOffset(190, 25)
             billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0)
             billboard.Adornee = part
             billboard.Parent = labelsFolder
@@ -429,12 +431,12 @@ local function showMarker(instance, details)
             text.Font = Enum.Font.Code
             text.TextSize = 13
             text.TextStrokeTransparency = 0.2
-            text.TextColor3 = COLORS.fragment
             text.Parent = billboard
             record.billboard, record.text = billboard, text
         end
         if record.text then
-            record.text.Text = "GLITCH FRAGMENT  ["..math.floor(details.distance).. " studs]"
+            record.text.TextColor3 = details.color
+            record.text.Text = labelText.."  ["..math.floor(details.distance).. " studs]"
         end
     elseif record.billboard then
         record.billboard:Destroy()
@@ -445,7 +447,8 @@ local function updateESP()
     local camera = Workspace.CurrentCamera
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
-    local candidates = {player = {}, objective = {}, fragment = {}, exit = {}, entity = {}}
+    local candidates = {player = {}, objective = {}, fragment = {}, book = {},
+        lever = {}, exit = {}, entity = {}}
     local localRole = roleOf(LocalPlayer)
     if state.playerESP then
         for _, other in ipairs(Players:GetPlayers()) do
@@ -475,6 +478,8 @@ local function updateESP()
         if not duplicate and not insidePlayerCharacter(instance)
             and ((kind == "objective" and state.objectiveESP)
             or (kind == "fragment" and state.fragmentESP)
+            or (kind == "book" and state.bookESP)
+            or (kind == "lever" and state.leverESP)
             or (kind == "exit" and state.exitESP)
             or (kind == "entity" and state.entityESP)) then
             if instance.Parent and instance:IsDescendantOf(Workspace) then
@@ -488,7 +493,7 @@ local function updateESP()
         end
     end
     local desired = {}
-    for _, kind in ipairs({"player", "objective", "fragment", "exit", "entity"}) do
+    for _, kind in ipairs({"player", "objective", "fragment", "book", "lever", "exit", "entity"}) do
         keepNearest(candidates[kind], desired, kind)
     end
     for instance, marker in pairs(markers) do
@@ -500,7 +505,7 @@ local function updateESP()
     end
     for instance, details in pairs(desired) do showMarker(instance, details) end
     return #candidates.player, #candidates.objective, #candidates.fragment,
-        #candidates.exit, #candidates.entity
+        #candidates.book, #candidates.lever, #candidates.exit, #candidates.entity
 end
 
 local function applyVisuals()
@@ -565,7 +570,8 @@ local function nextSpectate()
     return "Spectating "..list[spectateIndex].Parent.Name
 end
 local function diagnostics()
-    local counted = {player = 0, objective = 0, fragment = 0, exit = 0, entity = 0}
+    local counted = {player = 0, objective = 0, fragment = 0,
+        book = 0, lever = 0, exit = 0, entity = 0}
     local examples = {}
     for inst, kind in pairs(indexed) do
         if not insidePlayerCharacter(inst) then
@@ -579,6 +585,7 @@ local function diagnostics()
         .." GameId="..tostring(game.GameId).." Team="..tostring(LocalPlayer.Team))
     print("[Zinc Mayhem] Local role="..roleOf(LocalPlayer)
         .." objects="..counted.objective.." fragments="..counted.fragment
+        .." books="..counted.book.." levers="..counted.lever
         .." exits="..counted.exit.." world entities="..counted.entity)
     for _, example in ipairs(examples) do print("[Zinc Mayhem] "..example) end
     return "Diagnostics printed to console (F9)"
@@ -679,6 +686,12 @@ mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
 mapSection:AddToggle({Name = "Glitch Fragment ESP (pink + distance)",
     Flag = "mayhem_fragments", Default = state.fragmentESP,
     Callback = function(v) state.fragmentESP = v end})
+mapSection:AddToggle({Name = "Glitch Book ESP (Library, blue)",
+    Flag = "mayhem_books", Default = state.bookESP,
+    Callback = function(v) state.bookESP = v end})
+mapSection:AddToggle({Name = "Lever ESP (Cellar, gold)",
+    Flag = "mayhem_levers", Default = state.leverESP,
+    Callback = function(v) state.leverESP = v end})
 local fragmentSection = esp:CreateSection("Glitch Fragment detection")
 local customFragmentNames = (type(transfer) == "table" and transfer.fragmentNames) or ""
 if type(transfer) == "table" and type(transfer.aliases) == "table" then
@@ -782,14 +795,16 @@ track(RunService.Heartbeat, function(dt)
     if closed then return end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
-    if scanClock >= 12 and state.fragmentESP then
+    if scanClock >= 12 and (state.fragmentESP or state.bookESP or state.leverESP) then
         scanClock = 0
-        local found = false
+        local found = {fragment = false, book = false, lever = false}
         for instance, kind in pairs(indexed) do
-            if kind == "fragment" and instance.Parent
-                and instance:IsDescendantOf(Workspace) then found = true; break end
+            if found[kind] ~= nil and instance.Parent
+                and instance:IsDescendantOf(Workspace) then found[kind] = true end
         end
-        if not found then
+        if (state.fragmentESP and not found.fragment)
+            or (state.bookESP and not found.book)
+            or (state.leverESP and not found.lever) then
             task.spawn(function()
                 if closed then return end
                 local all = Workspace:GetDescendants()
@@ -804,11 +819,13 @@ track(RunService.Heartbeat, function(dt)
     if clock < 0.5 then return end
     clock = 0
     applyVisuals()
-    local playersCount, objectiveCount, fragmentCount, exitCount, entityCount = updateESP()
+    local playersCount, objectiveCount, fragmentCount, bookCount,
+        leverCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
     roleLabel:Set("Role: "..roleOf(LocalPlayer).." | Team: "..team)
     countLabel:Set("Seen: "..playersCount.." players / "..objectiveCount
         .." objectives / "..fragmentCount.." fragments / "
+        ..bookCount.." books / "..leverCount.." levers / "
         ..exitCount.." exits / "..entityCount.." entities")
 end)
 
