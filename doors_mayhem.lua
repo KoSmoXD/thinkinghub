@@ -700,7 +700,8 @@ local window = UI:CreateWindow({
     Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.5 | "..selectedStyle
         or "MAYHEM ADAPTER 0.5 | "..selectedStyle,
     Theme = state.uiTheme,
-    ToggleKey = Enum.KeyCode.RightControl,
+    ToggleKey = selectedStyle == "Obsidian"
+        and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
 })
 local nativeDestroy = window.Destroy
 local unload
