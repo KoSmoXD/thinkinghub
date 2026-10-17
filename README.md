@@ -230,3 +230,7 @@ The former Rush-only Auto Play has moved to **Entities > Entity Auto Play**. It 
 - **Checks:** `tests/mayhem_entities.lua` tests all profile names, role/team detection, nearest survivor, blocked path replan, movement, independent ability bindings, reset/unload and special ability restriction. Existing ROOMS module is unchanged.
 
 This is an experimental **client-side** navigation and input integration. Real in-game movement and ability use have **not** been verified on the live Overhaul test place, and additional entity variants may need specific adapters.
+
+### Fix: Player ESP when playing as an entity (v0.8 patch)
+
+The **ESP > Teams > Player highlights** filter now checks the actual Teams service team first and uses role attributes only as fallback. A survivor remains classified as Survivor even if a stale `SelectedEntity` or character attribute says Rush/Figure from a previous round. When **Opponents only** is enabled, survivors are visible to entity players; same-team players and known other entities are excluded. Unknown-role players on other teams appear cyan instead of being silently discarded. The ESP uses `HumanoidRootPart`, `PrimaryPart` or another actual `BasePart` and can display custom entity/character rigs without a Humanoid if they are not explicitly dead. The ESP origin also uses a custom rig root when needed. Use **ESP > Teams > Inspect player ESP filter (F9)** to print the observed team, role, rig type, and candidate visibility for every player. Live behavior needs validation in the game.
