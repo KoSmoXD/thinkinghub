@@ -204,3 +204,7 @@ Detection excludes objects nested inside player characters, and it does not auto
 - The player/objective/fragment/book/lever/exit ESPs all use MSESP after this change. Book highlights remain blue, levers gold, keys yellow, and glitch fragments pink. MSESP's default GlobalConfig.Distance setting supplies distance indicators.
 - `tests/mayhem_msesp.lua` covers the MSESP API options, caching, recoloring, category changes and per-marker teardown. `tests/mayhem_fragments.lua` now includes key classifier cases, avoiding false positives from keyboard/keyhole and door prompts.
 - **Live Roblox gameplay not yet tested:** the exact Key model names and MSESP rendering behavior can differ by Overhaul version. The Home pickup diagnostic scanner can reveal names if the Key ESP finds zero items.
+
+### Obsidian window toggle (v0.5)
+
+In **DOORS: MAYHEM / Overhaul Testing**, press **Right Shift** to hide or show the **Obsidian** interface. This calls Obsidian's native toggle and does not unload the hub or reset ESP settings. The **ZincUI** interface retains **Right Control**. The keybind applies when the UI style is selected under **Visual > Interface > UI library**.
