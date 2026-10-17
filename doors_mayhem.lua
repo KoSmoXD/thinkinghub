@@ -614,10 +614,10 @@ local function pickupDiagnostics()
         local obj = item.prompt
         local parent = obj.Parent
         local grand = parent and parent.Parent
-        print(("[Zinc Mayhem] #%d @%.0f studs | %s | Object=%q Action=%q | Parent=%s | Grand=%s | Fragment=%s")
+        print(("[Zinc Mayhem] #%d @%.0f studs | %s | Object=%q Action=%q | Parent=%s | Grand=%s | Category=%s")
             :format(i, item.distance, obj:GetFullName(), obj.ObjectText,
                 obj.ActionText, parent and parent.Name or "(none)",
-                grand and grand.Name or "(none)", tostring(isGlitchFragment(obj))))
+                grand and grand.Name or "(none)", tostring(classify(obj))))
     end
     return "Pickup diagnostics in console (F9): "..prompts.." prompts"
 end
@@ -694,8 +694,16 @@ mapSection:AddToggle({Name = "Lever ESP (Cellar, gold)",
     Callback = function(v) state.leverESP = v end})
 local fragmentSection = esp:CreateSection("Glitch Fragment detection")
 local customFragmentNames = (type(transfer) == "table" and transfer.fragmentNames) or ""
-if type(transfer) == "table" and type(transfer.aliases) == "table" then
-    for name in pairs(transfer.aliases) do fragmentAliases[name] = true end
+local customBookNames = (type(transfer) == "table" and transfer.bookNames) or ""
+local customLeverNames = (type(transfer) == "table" and transfer.leverNames) or ""
+if type(transfer) == "table" then
+    for source, target in pairs({
+        aliases = fragmentAliases, bookAliases = bookAliases, leverAliases = leverAliases,
+    }) do
+        if type(transfer[source]) == "table" then
+            for name in pairs(transfer[source]) do target[name] = true end
+        end
+    end
 end
 fragmentSection:AddTextbox({Name = "Extra fragment aliases", Flag = "mayhem_fragment_names",
     Default = customFragmentNames, Placeholder = "e.g. CorruptedShard, RiftPiece",
@@ -721,6 +729,43 @@ fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Resc
             if indexed[instance] == "fragment" then found = found + 1 end
         end
         window:SetStatus("Fragment scan complete: "..found.." candidates")
+    end})
+local puzzleSection = esp:CreateSection("Library / Cellar detection")
+puzzleSection:AddTextbox({Name = "Additional book names (comma-separated)",
+    Flag = "mayhem_book_names", Default = customBookNames,
+    Placeholder = "e.g. CorruptedTome, LibraryCollectible",
+    Callback = function(value) customBookNames = tostring(value or "") end})
+puzzleSection:AddTextbox({Name = "Additional lever names (comma-separated)",
+    Flag = "mayhem_lever_names", Default = customLeverNames,
+    Placeholder = "e.g. CellarSwitch, LeverInteract",
+    Callback = function(value) customLeverNames = tostring(value or "") end})
+puzzleSection:AddButton({Name = "Apply aliases and rescan objectives", ButtonText = "Rescan",
+    Callback = function()
+        local function rebuild(target, value)
+            table.clear(target)
+            local count = 0
+            for term in value:gmatch("[^,]+") do
+                local alias = norm(term)
+                if #alias >= 5 and alias ~= "handle" and alias ~= "model"
+                    and alias ~= "player" and alias ~= "door"
+                    and alias ~= "object" and count < 16 then
+                    target[alias] = true
+                    count = count + 1
+                end
+            end
+        end
+        rebuild(bookAliases, customBookNames)
+        rebuild(leverAliases, customLeverNames)
+        for instance, kind in pairs(indexed) do
+            if kind == "book" or kind == "lever" then indexed[instance] = nil end
+        end
+        local seen = {book = 0, lever = 0}
+        for _, instance in ipairs(Workspace:GetDescendants()) do
+            index(instance)
+            local kind = indexed[instance]
+            if seen[kind] then seen[kind] = seen[kind] + 1 end
+        end
+        window:SetStatus("Puzzle scan: "..seen.book.." books / "..seen.lever.." levers")
     end})
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
     Default = state.exitESP, Callback = function(v) state.exitESP = v end})
@@ -763,8 +808,13 @@ styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
             for key, value in pairs(state) do snapshot[key] = value end
             local aliases = {}
             for name in pairs(fragmentAliases) do aliases[name] = true end
+            local books, levers = {}, {}
+            for name in pairs(bookAliases) do books[name] = true end
+            for name in pairs(leverAliases) do levers[name] = true end
             local saved = {state = snapshot, aliases = aliases,
-                fragmentNames = customFragmentNames}
+                bookAliases = books, leverAliases = levers,
+                fragmentNames = customFragmentNames,
+                bookNames = customBookNames, leverNames = customLeverNames}
             env.ZincMayhemTransferState = saved
             env.ZincMayhemUIStyle = chosen
             local success, result = pcall(chunk)
