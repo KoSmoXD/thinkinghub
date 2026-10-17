@@ -19,9 +19,14 @@ local function testingMetadata()
     local creator = type(info.Creator) == "table" and normalizeTitle(info.Creator.Name) or ""
     return creator == "mistichiskii" or game.GameId == MAYHEM_UNIVERSE
 end
-local IS_OVERHAUL = game.PlaceId ~= MAYHEM_MAIN and testingMetadata()
+local runtimeEnvironment = (type(getgenv) == "function" and getgenv()) or _G
+-- Use only when manually launching this adapter inside the testing portal.
+-- Never auto-route unrelated games by an unverified place ID.
+local forceTesting = runtimeEnvironment.ZincMayhemForceOverhaul == true
+local IS_OVERHAUL = game.PlaceId ~= MAYHEM_MAIN and (forceTesting or testingMetadata())
 assert(game.PlaceId == MAYHEM_MAIN or IS_OVERHAUL,
-    "Zinc Mayhem: unsupported place "..tostring(game.PlaceId))
+    "Zinc Mayhem: unrecognized place "..tostring(game.PlaceId)
+    .."; for the Overhaul portal, set getgenv().ZincMayhemForceOverhaul = true")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -30,7 +35,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 assert(LocalPlayer, "Zinc Mayhem requires a local client")
 
-local env = (type(getgenv) == "function" and getgenv()) or _G
+local env = runtimeEnvironment
 if env.ZincMayhem and type(env.ZincMayhem.Unload) == "function" then
     pcall(env.ZincMayhem.Unload)
 end
@@ -205,7 +210,8 @@ end
 
 local markerFolder = Instance.new("Folder")
 markerFolder.Name = "ZincMayhemMarkers"
-markerFolder.Parent = Workspace.CurrentCamera or Workspace
+-- Parent to Workspace, not CurrentCamera: camera replacements destroy old children.
+markerFolder.Parent = Workspace
 local labelsFolder = Instance.new("Folder")
 labelsFolder.Name = "ZincMayhemLabels"
 labelsFolder.Parent = LocalPlayer:WaitForChild("PlayerGui")
@@ -259,7 +265,6 @@ local function showMarker(instance, details)
 end
 local function updateESP()
     local camera = Workspace.CurrentCamera
-    if camera and markerFolder.Parent ~= camera then markerFolder.Parent = camera end
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
     local candidates = {player = {}, objective = {}, fragment = {}, exit = {}, entity = {}}
@@ -281,10 +286,13 @@ local function updateESP()
         end
     end
     for instance, kind in pairs(indexed) do
-        if (kind == "objective" and state.objectiveESP)
+        -- Prefer a named model over the parts it contains; one label per pickup.
+        local parentModel = instance:FindFirstAncestorOfClass("Model")
+        local duplicate = parentModel and indexed[parentModel] == kind
+        if not duplicate and ((kind == "objective" and state.objectiveESP)
             or (kind == "fragment" and state.fragmentESP)
             or (kind == "exit" and state.exitESP)
-            or (kind == "entity" and state.entityESP) then
+            or (kind == "entity" and state.entityESP)) then
             if instance.Parent and instance:IsDescendantOf(Workspace) then
                 local pos = positionOf(instance)
                 if pos then
