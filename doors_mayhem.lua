@@ -73,7 +73,8 @@ end
 
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
-    fragmentESP = false, exitESP = false, entityESP = false,
+    fragmentESP = false, bookESP = false, leverESP = false,
+    exitESP = false, entityESP = false,
     bright = false, fovOn = false,
     fov = 90, spectate = false,
     playerColor = "Green", uiTheme = "XP",
@@ -96,6 +97,8 @@ local COLORS = {
     neutral = Color3.fromRGB(50, 225, 225),
     objective = Color3.fromRGB(255, 220, 80),
     fragment = Color3.fromRGB(255, 105, 180),
+    book = Color3.fromRGB(140, 170, 255),
+    lever = Color3.fromRGB(255, 190, 65),
     exit = Color3.fromRGB(70, 255, 160),
     entity = Color3.fromRGB(255, 125, 45),
 }
@@ -107,7 +110,8 @@ local PLAYER_PALETTE = {
     Red = Color3.fromRGB(255, 75, 75),
 }
 COLORS.player = PLAYER_PALETTE[state.playerColor] or PLAYER_PALETTE.Green
-local LIMITS = {player = 10, objective = 12, fragment = 16, exit = 4, entity = 4}
+local LIMITS = {player = 10, objective = 12, fragment = 16,
+    book = 16, lever = 12, exit = 4, entity = 4}
 
 local function track(signal, callback)
     local connection = signal:Connect(callback)
@@ -198,6 +202,89 @@ local function isGlitchFragment(instance)
     return false
 end
 
+-- Cellar / Library objective categories: read-only client-side discovery.
+-- Distinguish interactive puzzle objects from decorative shelves and mechanisms.
+local bookAliases, leverAliases = {}, {}
+
+local function puzzleName(value, kind)
+    local name = norm(value)
+    if name == "" then return false end
+    if kind == "book" then
+        if name == "book" or name == "codebook" or name == "librarybook"
+            or name == "glitchbook" or name == "puzzlebook"
+            or name == "bookpickup" or name == "bookitem"
+            or name == "collectiblebook" or name == "bookcollectible"
+            or name == "bookobjective" or name == "bookofcodes"
+            or name:match("^book%d+$") or name:match("^glitchbook%d+$")
+            or name:match("^librarybook%d+$") then return true end
+        for alias in pairs(bookAliases) do
+            if name == alias then return true end
+        end
+    elseif kind == "lever" then
+        if name == "lever" or name == "cellarlever" or name == "basementlever"
+            or name == "puzzlelever" or name == "pulllever"
+            or name == "leverhandle" or name == "leverpickup"
+            or name == "leverswitch" or name == "gatelever"
+            or name == "leverobjective" or name == "librarylever"
+            or name:match("^lever%d+$")
+            or name:match("^cellarlever%d+$") then return true end
+        for alias in pairs(leverAliases) do
+            if name == alias then return true end
+        end
+    end
+    return false
+end
+
+local function puzzleKind(instance)
+    for _, kind in ipairs({"book", "lever"}) do
+        if puzzleName(instance.Name, kind) then
+            -- "Book" is a very common decorative shelf part; only expose one
+            -- when there is evidence of an actual collectible / interaction.
+            if kind == "lever" or hasPickupHint(instance)
+                or norm(instance.Name) ~= "book" then return kind end
+        end
+    end
+    for _, key in ipairs({"ItemName", "ItemId", "ItemType", "PickupName",
+        "DisplayName", "ObjectiveType", "InteractType", "PuzzleType"}) do
+        local value = instance:GetAttribute(key)
+        if type(value) == "string" then
+            for _, kind in ipairs({"book", "lever"}) do
+                if puzzleName(value, kind) then return kind end
+            end
+        end
+    end
+    local ok, tags = pcall(CollectionService.GetTags, CollectionService, instance)
+    if ok and type(tags) == "table" then
+        for _, tag in ipairs(tags) do
+            for _, kind in ipairs({"book", "lever"}) do
+                if puzzleName(tag, kind) then return kind end
+            end
+        end
+    end
+    if instance:IsA("ProximityPrompt") then
+        local action = norm(instance.ActionText)
+        local object = norm(instance.ObjectText)
+        for _, kind in ipairs({"book", "lever"}) do
+            if puzzleName(object, kind) or puzzleName(action, kind) then return kind end
+        end
+        if action:find("book", 1, true) and
+            (action:find("collect", 1, true) or action:find("pick", 1, true)
+                or action:find("read", 1, true)) then return "book" end
+        if action:find("lever", 1, true) and
+            (action:find("pull", 1, true) or action:find("use", 1, true)
+                or action:find("activate", 1, true)) then return "lever" end
+        local parent = instance.Parent
+        for _ = 1, 3 do
+            if not parent or parent == Workspace then break end
+            for _, kind in ipairs({"book", "lever"}) do
+                if puzzleName(parent.Name, kind) then return kind end
+            end
+            parent = parent.Parent
+        end
+    end
+    return nil
+end
+
 -- A pickup under an avatar (especially a held "Handle" or fragment)
 -- must never become world ESP. Check every ancestor, not just the root model.
 local function insidePlayerCharacter(instance)
@@ -217,6 +304,8 @@ local function classify(instance)
         or instance:IsA("ProximityPrompt")) then return nil end
     if insidePlayerCharacter(instance) then return nil end
     if isGlitchFragment(instance) then return "fragment" end
+    local puzzle = puzzleKind(instance)
+    if puzzle then return puzzle end
     if instance:IsA("ProximityPrompt") then return nil end
     local name = norm(instance.Name)
     if instance:IsA("Model") then
@@ -231,8 +320,7 @@ local function classify(instance)
         return "exit"
     end
     if name == "breakerbox" or name == "fusebox" or name == "fuse"
-        or name == "fuses" or name == "book" or name == "codebook"
-        or name == "paper" or name == "lever" or name == "timelever"
+        or name == "fuses" or name == "paper" or name == "timelever"
         or name == "objective" or name == "objectiveitem"
         or name == "key" or name == "hotelkey" or name == "button"
         or name == "handle" or name == "guillotine" or name == "generator" then
@@ -252,20 +340,31 @@ local function index(instance)
             target = target.Parent
         end
         if not target or target == Workspace then return end
-        -- Prefer the physical fragment model over a generic Handle.
+        -- Attach to the physical puzzle/pickup rather than the prompt itself.
         local model = target:FindFirstAncestorOfClass("Model")
-        if model and isGlitchFragment(model) then target = model end
+        if model and ((kind == "fragment" and isGlitchFragment(model))
+            or ((kind == "book" or kind == "lever")
+                and puzzleKind(model) == kind)) then
+            target = model
+        end
     end
-    indexed[target] = kind
+    if not insidePlayerCharacter(target) then indexed[target] = kind end
 end
 for _, instance in ipairs(Workspace:GetDescendants()) do index(instance) end
 track(Workspace.DescendantAdded, index)
 track(Workspace.DescendantRemoving, function(instance)
     indexed[instance] = nil
-    -- Prompt-derived entries disappear once their pickup prompt is removed.
-    if instance:IsA("ProximityPrompt") and isGlitchFragment(instance) then
-        local part = instance.Parent
-        if part and indexed[part] == "fragment" then indexed[part] = nil end
+    -- Prompt-derived markers clear on pickup/pull, including after streamed removal.
+    if instance:IsA("ProximityPrompt") then
+        local kind = isGlitchFragment(instance) and "fragment" or puzzleKind(instance)
+        if kind then
+            local node = instance.Parent
+            for _ = 1, 3 do
+                if not node or node == Workspace then break end
+                if indexed[node] == kind then indexed[node] = nil end
+                node = node.Parent
+            end
+        end
     end
 end)
 
