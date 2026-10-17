@@ -234,3 +234,15 @@ This is an experimental **client-side** navigation and input integration. Real i
 ### Fix: Player ESP when playing as an entity (v0.8 patch)
 
 The **ESP > Teams > Player highlights** filter now checks the actual Teams service team first and uses role attributes only as fallback. A survivor remains classified as Survivor even if a stale `SelectedEntity` or character attribute says Rush/Figure from a previous round. When **Opponents only** is enabled, survivors are visible to entity players; same-team players and known other entities are excluded. Unknown-role players on other teams appear cyan instead of being silently discarded. The ESP uses `HumanoidRootPart`, `PrimaryPart` or another actual `BasePart` and can display custom entity/character rigs without a Humanoid if they are not explicitly dead. The ESP origin also uses a custom rig root when needed. Use **ESP > Teams > Inspect player ESP filter (F9)** to print the observed team, role, rig type, and candidate visibility for every player. Live behavior needs validation in the game.
+
+
+### Auto Glitch Fragment Game (Mayhem v0.9 experimental)
+
+The Hotel map's second objective uses Glitch Fragments: after the first objective, players solve them to obtain the Hotel key. **Auto Glitch Fragment Game (beta)** is in **ESP > Hotel Fragment Game (experimental)**, separate from the pink Glitch Fragment ESP.
+
+- While playing as a survivor, the assistant attempts to activate recognized Glitch Fragment ProximityPrompts only when inside their activation radius. It tries `fireproximityprompt` if the executor supports that function, then falls back to `InputHoldBegin/InputHoldEnd` for normal prompts.
+- When a visibly named fragment puzzle GUI opens, the assistant only clicks a button if the puzzle exposes a **single, unambiguous explicit answer** (such as `IsCorrect=true` on a button or `CorrectAnswer`/`Solution` on a parent GUI). Clicking is throttled and debounced by puzzle stage so it does not repeatedly guess.
+- If the puzzle is driven by private script state, graphics, or an unexposed sequence, it will show **"Puzzle visible: no explicit answer"** rather than blindly clicking random buttons. Therefore the full Glitch Fragment puzzle is **not confirmed automated** for the current Overhaul build.
+- Press **Inspect visible fragment puzzle (F9)** with the puzzle open to print visible GUI/button names, explicit-answer flags and nearby fragment prompts. This provides diagnostics for implementing the actual minigame logic later.
+- Uses no game remotes or teleporting, ignores unrelated ZincUI controls, does not activate while on an entity team, and unloads cleanly. Auto-interaction and GUI input depend on the executor / game input APIs.
+- The `tests/mayhem_fragment_game.lua` mocks proximity range, puzzle explicit-answer cases, repeated clicks, disabling, unknown answers, and entity-only exclusion. **In-game verification remains pending.**
