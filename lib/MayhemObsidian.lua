@@ -23,6 +23,8 @@ function Adapter:CreateWindow(opts)
         Title = opts.Title or "Zinc Hub",
         Footer = opts.Subtitle or "DOORS: MAYHEM",
         Center = true, AutoShow = true, Resizable = true,
+        -- Native Obsidian toggle keeps UI state intact when hidden.
+        ToggleKeybind = opts.ToggleKey or Enum.KeyCode.RightShift,
         NotifySide = "Right", ShowCustomCursor = false,
     })
     -- A footer grip for mouse/touch, preserving the original title-bar drag
