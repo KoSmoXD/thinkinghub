@@ -182,3 +182,16 @@ When using Mayhem in Obsidian mode, its adapter also provides a draggable bottom
 getgenv().ZincMayhemForceOverhaul = true
 loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
 ```
+
+### Library glitch book and Cellar lever ESP (v0.4 beta)
+
+The MAYHEM map guide documents the **Library** as a code-book collection objective and **Cellar** as a lever-pulling objective. The in-game object instance hierarchy in the public Overhaul build is not yet confirmed, so the matcher uses known aliases, standard interaction prompts, attributes, CollectionService tags, and optional user-defined names. No gameplay remotes are called.
+
+Under **ESP > Map objectives**:
+- **Glitch Book ESP (Library, blue)** highlights matching interactable books in light blue and displays `GLITCH BOOK [distance in studs]`.
+- **Lever ESP (Cellar, gold)** highlights matching levers in gold with `LEVER [distance in studs]`.
+- Both are separate from regular Objective ESP and the original **pink Glitch Fragment ESP**.
+
+Use **ESP > Library / Cellar detection** to enter comma-separated custom book/lever names and click **Apply aliases and rescan objectives** when Overhaul changes object names. Aliases and toggles carry over when switching between ZincUI and Obsidian. Home > Scan pickup names to console reports classified prompts if expected pickups do not appear.
+
+Detection excludes objects nested inside player characters, and it does not automatically solve puzzles or interact with objects. Offline tests include named/numbered objects, prompt labels, attributes, tags, alias overrides, decorations, character inventory exclusion, and regressions for previously implemented ESP types. **Live game verification remains pending**.
