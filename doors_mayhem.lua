@@ -98,12 +98,17 @@ local function roleOf(player)
     end
     return "Unknown"
 end
+local fragmentAliases = {}
 local function hasFragmentName(value)
     local valueName = norm(value)
-    return valueName:find("glitchfragment", 1, true) ~= nil
+    if valueName:find("glitchfragment", 1, true) ~= nil
         or valueName:find("fragmentglitch", 1, true) ~= nil
         or valueName == "glitchshard"
-        or valueName == "glitchpiece"
+        or valueName == "glitchpiece" then return true end
+    for alias in pairs(fragmentAliases) do
+        if valueName == alias or valueName:find(alias, 1, true) then return true end
+    end
+    return false
 end
 
 local function isGlitchFragment(instance)
@@ -435,6 +440,29 @@ mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
 mapSection:AddToggle({Name = "Glitch Fragment ESP (cyan + distance)",
     Flag = "mayhem_fragments", Default = false,
     Callback = function(v) state.fragmentESP = v end})
+local fragmentSection = esp:CreateSection("Glitch Fragment detection")
+local customFragmentNames = ""
+fragmentSection:AddTextbox({Name = "Extra fragment aliases", Flag = "mayhem_fragment_names",
+    Default = "", Placeholder = "e.g. CorruptedShard, RiftPiece",
+    Callback = function(value) customFragmentNames = tostring(value or "") end})
+fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Rescan",
+    Callback = function()
+        table.clear(fragmentAliases)
+        local count = 0
+        for term in customFragmentNames:gmatch("[^,]+") do
+            local alias = norm(term)
+            if #alias >= 5 and alias ~= "glitch" and alias ~= "fragment"
+                and count < 16 then
+                fragmentAliases[alias] = true
+                count = count + 1
+            end
+        end
+        for instance, kind in pairs(indexed) do
+            if kind == "fragment" then indexed[instance] = nil end
+        end
+        for _, instance in ipairs(Workspace:GetDescendants()) do index(instance) end
+        window:SetStatus("Glitch names updated / map rescanned")
+    end})
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
     Default = false, Callback = function(v) state.exitESP = v end})
 mapSection:AddToggle({Name = "World entities (pink)", Flag = "mayhem_entities",
