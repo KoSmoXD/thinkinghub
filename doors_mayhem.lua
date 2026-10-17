@@ -454,69 +454,76 @@ local function keepNearest(candidates, desired, kind)
     end
 end
 
-local markerFolder = Instance.new("Folder")
-markerFolder.Name = "ZincMayhemMarkers"
--- Parent to Workspace, not CurrentCamera: camera replacements destroy old children.
-markerFolder.Parent = Workspace
-local labelsFolder = Instance.new("Folder")
-labelsFolder.Name = "ZincMayhemLabels"
-labelsFolder.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local function showMarker(instance, details)
+-- MSESP handles all highlights, billboards and distance text. Never clear
+-- the shared library globally: another Zinc/ROOMS module may also use it.
+local ESP_LABELS = {
+    player = "PLAYER", objective = "OBJECTIVE", fragment = "GLITCH FRAGMENT",
+    book = "GLITCH BOOK", lever = "LEVER", key = "KEY",
+    exit = "EXIT", entity = "ENTITY",
+}
+local function removeMarker(instance)
     local record = markers[instance]
-    if not record then
-        local highlight = Instance.new("Highlight")
-        highlight.Name = "ZincMayhem"
-        highlight.FillTransparency = 0.75
-        highlight.OutlineTransparency = 0
-        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        highlight.Adornee = instance
-        highlight.Parent = markerFolder
-        record = {highlight = highlight}
-        markers[instance] = record
-    end
-    record.highlight.FillColor = details.color
-    record.highlight.OutlineColor = details.color
-    record.highlight.Enabled = true
-
-    local labels = {fragment = "GLITCH FRAGMENT", book = "GLITCH BOOK", lever = "LEVER"}
-    local labelText = labels[details.kind]
-    if labelText then
-        local part = instance:IsA("BasePart") and instance
-            or (instance:IsA("Model") and (instance.PrimaryPart
-                or instance:FindFirstChildWhichIsA("BasePart", true)))
-        if part and not record.billboard then
-            local billboard = Instance.new("BillboardGui")
-            billboard.Name = "MayhemPuzzleESP"
-            billboard.AlwaysOnTop = true
-            billboard.Size = UDim2.fromOffset(190, 25)
-            billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0)
-            billboard.Adornee = part
-            billboard.Parent = labelsFolder
-            local text = Instance.new("TextLabel")
-            text.BackgroundTransparency = 1
-            text.Size = UDim2.fromScale(1, 1)
-            text.Font = Enum.Font.Code
-            text.TextSize = 13
-            text.TextStrokeTransparency = 0.2
-            text.Parent = billboard
-            record.billboard, record.text = billboard, text
-        end
-        if record.text then
-            record.text.TextColor3 = details.color
-            record.text.Text = labelText.."  ["..math.floor(details.distance).. " studs]"
-        end
-    elseif record.billboard then
-        record.billboard:Destroy()
-        record.billboard, record.text = nil, nil
+    if not record then return end
+    markers[instance] = nil
+    if record.object and not record.object.Deleted then
+        pcall(function() record.object:Destroy() end)
     end
 end
+
+local function showMarker(instance, details)
+    local label = ESP_LABELS[details.kind] or "TARGET"
+    if details.kind == "player" or details.kind == "entity" then
+        label = label.." | "..instance.Name
+    end
+    local color = details.color
+    local record = markers[instance]
+    if record and record.object and record.object.Deleted then
+        markers[instance] = nil
+        record = nil
+    end
+    if not record then
+        local textPart = instance:IsA("BasePart") and instance
+            or (instance:IsA("Model") and (instance.PrimaryPart
+                or instance:FindFirstChildWhichIsA("BasePart", true)))
+        if not textPart then return end
+        local ok, obj = pcall(function()
+            return MSESP:Add({
+                Name = label, Model = instance, TextModel = textPart,
+                ESPType = "Highlight", Color = color,
+                FillColor = color, OutlineColor = color,
+                FillTransparency = 0.75, OutlineTransparency = 0,
+                TextSize = 15, StudsOffset = Vector3.new(0, 2.4, 0),
+                MaxDistance = 5000,
+            })
+        end)
+        if not ok or not obj then
+            warn("[Zinc Mayhem] MSESP:Add failed: "..tostring(obj))
+            return
+        end
+        markers[instance] = {object = obj, kind = details.kind,
+            color = color, label = label}
+        return
+    end
+    if record.kind ~= details.kind then
+        removeMarker(instance)
+        return showMarker(instance, details)
+    end
+    if record.color ~= color then
+        local ok = pcall(function() record.object:SetEveryColor(color, true) end)
+        if ok then record.color = color end
+    end
+    if record.label ~= label and record.object.CurrentSettings then
+        record.object.CurrentSettings.Name = label
+        record.label = label
+    end
+end
+
 local function updateESP()
     local camera = Workspace.CurrentCamera
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
     local candidates = {player = {}, objective = {}, fragment = {}, book = {},
-        lever = {}, exit = {}, entity = {}}
+        lever = {}, key = {}, exit = {}, entity = {}}
     local localRole = roleOf(LocalPlayer)
     if state.playerESP then
         for _, other in ipairs(Players:GetPlayers()) do
@@ -548,6 +555,7 @@ local function updateESP()
             or (kind == "fragment" and state.fragmentESP)
             or (kind == "book" and state.bookESP)
             or (kind == "lever" and state.leverESP)
+            or (kind == "key" and state.keyESP)
             or (kind == "exit" and state.exitESP)
             or (kind == "entity" and state.entityESP)) then
             if instance.Parent and instance:IsDescendantOf(Workspace) then
@@ -561,19 +569,16 @@ local function updateESP()
         end
     end
     local desired = {}
-    for _, kind in ipairs({"player", "objective", "fragment", "book", "lever", "exit", "entity"}) do
+    for _, kind in ipairs({"player", "objective", "fragment", "book", "lever", "key", "exit", "entity"}) do
         keepNearest(candidates[kind], desired, kind)
     end
-    for instance, marker in pairs(markers) do
-        if not desired[instance] then
-            marker.highlight:Destroy()
-            if marker.billboard then marker.billboard:Destroy() end
-            markers[instance] = nil
-        end
+    for instance in pairs(markers) do
+        if not desired[instance] then removeMarker(instance) end
     end
     for instance, details in pairs(desired) do showMarker(instance, details) end
     return #candidates.player, #candidates.objective, #candidates.fragment,
-        #candidates.book, #candidates.lever, #candidates.exit, #candidates.entity
+        #candidates.book, #candidates.lever, #candidates.key,
+        #candidates.exit, #candidates.entity
 end
 
 local function applyVisuals()
@@ -639,7 +644,7 @@ local function nextSpectate()
 end
 local function diagnostics()
     local counted = {player = 0, objective = 0, fragment = 0,
-        book = 0, lever = 0, exit = 0, entity = 0}
+        book = 0, lever = 0, key = 0, exit = 0, entity = 0}
     local examples = {}
     for inst, kind in pairs(indexed) do
         if not insidePlayerCharacter(inst) then
@@ -654,7 +659,7 @@ local function diagnostics()
     print("[Zinc Mayhem] Local role="..roleOf(LocalPlayer)
         .." objects="..counted.objective.." fragments="..counted.fragment
         .." books="..counted.book.." levers="..counted.lever
-        .." exits="..counted.exit.." world entities="..counted.entity)
+        .." keys="..counted.key.." exits="..counted.exit.." world entities="..counted.entity)
     for _, example in ipairs(examples) do print("[Zinc Mayhem] "..example) end
     return "Diagnostics printed to console (F9)"
 end
@@ -707,8 +712,7 @@ unload = function()
     setFov(false)
     setFullbright(false)
     restoreCamera()
-    markerFolder:Destroy()
-    labelsFolder:Destroy()
+    for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
     table.clear(indexed)
     if env.ZincMayhem and env.ZincMayhem.Unload == unload then env.ZincMayhem = nil end
@@ -760,6 +764,9 @@ mapSection:AddToggle({Name = "Glitch Book ESP (Library, blue)",
 mapSection:AddToggle({Name = "Lever ESP (Cellar, gold)",
     Flag = "mayhem_levers", Default = state.leverESP,
     Callback = function(v) state.leverESP = v end})
+mapSection:AddToggle({Name = "Key ESP (yellow)",
+    Flag = "mayhem_keys", Default = state.keyESP,
+    Callback = function(v) state.keyESP = v end})
 local fragmentSection = esp:CreateSection("Glitch Fragment detection")
 local customFragmentNames = (type(transfer) == "table" and transfer.fragmentNames) or ""
 local customBookNames = (type(transfer) == "table" and transfer.bookNames) or ""
@@ -913,16 +920,18 @@ track(RunService.Heartbeat, function(dt)
     if closed then return end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
-    if scanClock >= 12 and (state.fragmentESP or state.bookESP or state.leverESP) then
+    if scanClock >= 12 and (state.fragmentESP or state.bookESP
+        or state.leverESP or state.keyESP) then
         scanClock = 0
-        local found = {fragment = false, book = false, lever = false}
+        local found = {fragment = false, book = false, lever = false, key = false}
         for instance, kind in pairs(indexed) do
             if found[kind] ~= nil and instance.Parent
                 and instance:IsDescendantOf(Workspace) then found[kind] = true end
         end
         if (state.fragmentESP and not found.fragment)
             or (state.bookESP and not found.book)
-            or (state.leverESP and not found.lever) then
+            or (state.leverESP and not found.lever)
+            or (state.keyESP and not found.key) then
             task.spawn(function()
                 if closed then return end
                 local all = Workspace:GetDescendants()
@@ -938,13 +947,13 @@ track(RunService.Heartbeat, function(dt)
     clock = 0
     applyVisuals()
     local playersCount, objectiveCount, fragmentCount, bookCount,
-        leverCount, exitCount, entityCount = updateESP()
+        leverCount, keyCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
     roleLabel:Set("Role: "..roleOf(LocalPlayer).." | Team: "..team)
     countLabel:Set("Seen: "..playersCount.." players / "..objectiveCount
         .." objectives / "..fragmentCount.." fragments / "
         ..bookCount.." books / "..leverCount.." levers / "
-        ..exitCount.." exits / "..entityCount.." entities")
+        ..keyCount.." keys / "..exitCount.." exits / "..entityCount.." entities")
 end)
 
 return env.ZincMayhem
