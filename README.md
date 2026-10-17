@@ -132,3 +132,28 @@ After the existing threat-clear delay, Auto Locker sends a short camera-relative
 The toggle is now **Door ESP**, with labels such as **Door A-212** for both upcoming doors. An acquired door route no longer gets cancelled just because the number-sign / ESP lookup temporarily returns no result. Crossing attempts expire after three seconds if the player's room progress has not advanced, instead of permanently excluding that door.
 
 Locker exit also sends a short W key event through VirtualInputManager when supported, alongside the existing movement request. Key-up is sent on pulse completion, route reset, confirmed exit, disable and unload. No key is pressed while a text box has focus. Availability depends on the client; live exit compatibility remains unverified.
+
+## DOORS: MAYHEM support (beta)
+
+Zinc Hub routes Roblox place **119040856156269** ([DOORS: MAYHEM](https://www.roblox.com/games/119040856156269/DOORS-MAYHEM)) to a separate [doors_mayhem.lua](doors_mayhem.lua) adapter. The regular loader preserves the existing ROOMS: Revisited behavior in other places.
+
+Mayhem is a team-based asymmetric horror game, not a linear next-door game. This adapter uses our public ZincUI XP window with Right Control to toggle visibility.
+
+- **Home**: role and team labels (when reported by player attributes/teams), object counts, F9 diagnostics, and Unload.
+- **ESP**: player highlights, optional opponents-only filtering, objectives (yellow), exits (green), and world entities (pink).
+- **Visual**: client FOV, fullbright, spectate next live player, XP/Dark/Midnight themes.
+- **Cleanup**: disconnects listeners, destroys highlights, restores camera and visuals on Unload or reload.
+
+Object markers match client-visible instance names only. Aliases cover glitch fragments, breaker/fuse boxes, levers, buttons, books, keys, handles, generators and exits. Live names and map variants may differ. Marker counts are bounded; the game adapter does not auto-complete objectives or reuse ROOMS Auto Floor.
+
+The Roblox listing currently mentions vALPHA 0.772 and a public-test portal. **Only the listed place ID is routed**. The portal might use another place ID. Home > Copy diagnostics to console prints PlaceId, GameId, and indexed paths to support future binding.
+
+**Test this feature branch before merging:**
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
+```
+
+After merging, use the regular loader. The client requires loadstring and game:HttpGet. Roblox live compatibility is not yet verified.
+
+CI compiles doors_mayhem.lua and tests/mayhem_dispatch.lua; the dispatch regression test verifies routing and the existing fallback.
