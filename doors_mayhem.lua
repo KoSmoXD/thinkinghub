@@ -40,6 +40,12 @@ if env.ZincMayhem and type(env.ZincMayhem.Unload) == "function" then
     pcall(env.ZincMayhem.Unload)
 end
 
+local transfer = env.ZincMayhemTransferState
+env.ZincMayhemTransferState = nil
+local selectedStyle = env.ZincMayhemUIStyle == "Obsidian" and "Obsidian" or "Zinc"
+local selfURL = env.ZincMayhemSourceURL
+    or "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"
+
 local function fetchZinc(url)
     local ok, source = pcall(function() return game:HttpGet(url) end)
     if not ok or type(source) ~= "string" then return nil end
@@ -53,29 +59,53 @@ local function fetchZinc(url)
     end
 end
 
-local Zinc = fetchZinc("https://raw.githubusercontent.com/KoSmoXD/ZincUI/main/ZincUI.lua")
-    or fetchZinc("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincUI.lua")
-assert(Zinc, "Zinc Mayhem: failed to load ZincUI")
+local UI
+if selectedStyle == "Obsidian" then
+    UI = fetchZinc(
+        "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemObsidian.lua")
+    assert(UI, "Mayhem: Obsidian bridge could not be loaded")
+else
+    UI = fetchZinc("https://raw.githubusercontent.com/KoSmoXD/ZincUI/main/ZincUI.lua")
+        or fetchZinc("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincUI.lua")
+    assert(UI, "Zinc Mayhem: failed to load ZincUI")
+end
 
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
     fragmentESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false,
     fov = 90, spectate = false,
+    playerColor = "Green", uiTheme = "XP",
 }
+if type(transfer) == "table" and type(transfer.state) == "table" then
+    for key, value in pairs(transfer.state) do
+        if state[key] ~= nil and type(value) == type(state[key]) then
+            state[key] = value
+        end
+    end
+end
 local closed = false
 local connections, markers, indexed = {}, {}, {}
 local originalLighting, oldCamera, oldFov = nil, nil, nil
 local spectateIndex = 0
 local roleLabel, countLabel
 local COLORS = {
-    player = Color3.fromRGB(255, 80, 80),
+    player = Color3.fromRGB(75, 235, 110),
     friend = Color3.fromRGB(95, 160, 255),
+    neutral = Color3.fromRGB(50, 225, 225),
     objective = Color3.fromRGB(255, 220, 80),
     fragment = Color3.fromRGB(80, 255, 255),
     exit = Color3.fromRGB(70, 255, 160),
-    entity = Color3.fromRGB(255, 100, 200),
+    entity = Color3.fromRGB(255, 125, 45),
 }
+local PLAYER_PALETTE = {
+    Green = Color3.fromRGB(75, 235, 110),
+    Blue = Color3.fromRGB(90, 160, 255),
+    Cyan = Color3.fromRGB(50, 225, 225),
+    Yellow = Color3.fromRGB(255, 220, 75),
+    Red = Color3.fromRGB(255, 75, 75),
+}
+COLORS.player = PLAYER_PALETTE[state.playerColor] or PLAYER_PALETTE.Green
 local LIMITS = {player = 10, objective = 12, fragment = 16, exit = 4, entity = 4}
 
 local function track(signal, callback)
@@ -290,11 +320,14 @@ local function updateESP()
                 local humanoid = other.Character:FindFirstChildOfClass("Humanoid")
                 local root = other.Character:FindFirstChild("HumanoidRootPart")
                 local targetRole = roleOf(other)
-                local enemy = localRole == "Unknown" or targetRole == "Unknown" or targetRole ~= localRole
-                if humanoid and humanoid.Health > 0 and root and (not state.enemyOnly or enemy) then
+                local known = localRole ~= "Unknown" and targetRole ~= "Unknown"
+                local enemy = known and targetRole ~= localRole
+                if humanoid and humanoid.Health > 0 and root
+                    and (not state.enemyOnly or not known or enemy) then
                     table.insert(candidates.player, {
                         instance = other.Character, distance = (origin - root.Position).Magnitude,
-                        color = enemy and COLORS.player or COLORS.friend,
+                        color = (not known) and COLORS.neutral
+                            or (enemy and COLORS.player or COLORS.friend),
                     })
                 end
             end
@@ -417,11 +450,11 @@ local function diagnostics()
     return "Diagnostics printed to console (F9)"
 end
 
-local window = Zinc:CreateWindow({
+local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.2 | XP"
-        or "MAYHEM ADAPTER 0.2 | XP",
-    Theme = "XP",
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.3 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.3 | "..selectedStyle,
+    Theme = state.uiTheme,
     ToggleKey = Enum.KeyCode.RightControl,
 })
 local nativeDestroy = window.Destroy
@@ -442,8 +475,8 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.2.0",
-    PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL}
+env.ZincMayhem = {Unload = unload, Version = "0.3.0",
+    PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
 local home = window:CreateTab("Home")
@@ -460,19 +493,31 @@ info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unlo
 local esp = window:CreateTab("ESP")
 local playersSection = esp:CreateSection("Teams")
 playersSection:AddToggle({Name = "Player highlights", Flag = "mayhem_players",
-    Default = false, Callback = function(v) state.playerESP = v end})
+    Default = state.playerESP, Callback = function(v) state.playerESP = v end})
 playersSection:AddToggle({Name = "Opponents only (unknown roles: all)", Flag = "mayhem_enemy",
-    Default = true, Callback = function(v) state.enemyOnly = v end})
+    Default = state.enemyOnly, Callback = function(v) state.enemyOnly = v end})
+playersSection:AddDropdown({Name = "Player ESP color", Flag = "mayhem_player_color",
+    Options = {"Green", "Blue", "Cyan", "Yellow", "Red"},
+    Default = state.playerColor, Callback = function(color)
+        if PLAYER_PALETTE[color] then
+            state.playerColor = color
+            COLORS.player = PLAYER_PALETTE[color]
+        end
+    end})
+playersSection:AddLabel("Same-team players: blue. Unknown roles: cyan.")
 local mapSection = esp:CreateSection("Map objectives")
 mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
-    Default = false, Callback = function(v) state.objectiveESP = v end})
+    Default = state.objectiveESP, Callback = function(v) state.objectiveESP = v end})
 mapSection:AddToggle({Name = "Glitch Fragment ESP (cyan + distance)",
-    Flag = "mayhem_fragments", Default = false,
+    Flag = "mayhem_fragments", Default = state.fragmentESP,
     Callback = function(v) state.fragmentESP = v end})
 local fragmentSection = esp:CreateSection("Glitch Fragment detection")
-local customFragmentNames = ""
+local customFragmentNames = (type(transfer) == "table" and transfer.fragmentNames) or ""
+if type(transfer) == "table" and type(transfer.aliases) == "table" then
+    for name in pairs(transfer.aliases) do fragmentAliases[name] = true end
+end
 fragmentSection:AddTextbox({Name = "Extra fragment aliases", Flag = "mayhem_fragment_names",
-    Default = "", Placeholder = "e.g. CorruptedShard, RiftPiece",
+    Default = customFragmentNames, Placeholder = "e.g. CorruptedShard, RiftPiece",
     Callback = function(value) customFragmentNames = tostring(value or "") end})
 fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Rescan",
     Callback = function()
@@ -493,20 +538,20 @@ fragmentSection:AddButton({Name = "Apply aliases and rescan", ButtonText = "Resc
         window:SetStatus("Glitch names updated / map rescanned")
     end})
 mapSection:AddToggle({Name = "Exits (green)", Flag = "mayhem_exits",
-    Default = false, Callback = function(v) state.exitESP = v end})
-mapSection:AddToggle({Name = "World entities (pink)", Flag = "mayhem_entities",
-    Default = false, Callback = function(v) state.entityESP = v end})
+    Default = state.exitESP, Callback = function(v) state.exitESP = v end})
+mapSection:AddToggle({Name = "World entities (orange)", Flag = "mayhem_entities",
+    Default = state.entityESP, Callback = function(v) state.entityESP = v end})
 mapSection:AddLabel("Markers rely on streamed object names; map variants can differ.")
 
 local visuals = window:CreateTab("Visual")
 local cameraSection = visuals:CreateSection("Camera")
 cameraSection:AddToggle({Name = "Custom FOV", Flag = "mayhem_fov_toggle",
-    Default = false, Callback = setFov})
+    Default = state.fovOn, Callback = setFov})
 cameraSection:AddSlider({Name = "Field of view", Flag = "mayhem_fov",
-    Min = 50, Max = 120, Increment = 1, Default = 90,
+    Min = 50, Max = 120, Increment = 1, Default = state.fov,
     Callback = function(v) state.fov = v end})
 cameraSection:AddToggle({Name = "Fullbright", Flag = "mayhem_fullbright",
-    Default = false, Callback = setFullbright})
+    Default = state.bright, Callback = setFullbright})
 local spectateSection = visuals:CreateSection("Spectator")
 spectateSection:AddButton({Name = "Next live player", ButtonText = "Next", Callback = function()
     window:SetStatus(nextSpectate())
@@ -515,10 +560,51 @@ spectateSection:AddButton({Name = "Back to my character", ButtonText = "Stop", C
     restoreCamera(); window:SetStatus("Spectate disabled")
 end})
 local styleSection = visuals:CreateSection("Interface")
-styleSection:AddDropdown({Name = "Window theme", Flag = "mayhem_theme",
-    Options = {"XP", "Dark", "Midnight"}, Default = "XP",
-    Callback = function(theme) window:SetTheme(theme) end})
+styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
+    Options = {"Zinc", "Obsidian"}, Default = selectedStyle,
+    Callback = function(chosen)
+        if chosen == selectedStyle then return end
+        if chosen ~= "Obsidian" and chosen ~= "Zinc" then return end
+        task.defer(function()
+            local ok, source = pcall(function() return game:HttpGet(selfURL
+                .. "?style=" .. game:GetService("HttpService"):GenerateGUID(false)) end)
+            if not ok or type(source) ~= "string" then
+                window:SetStatus("Style switch failed: source download error")
+                return
+            end
+            local chunk, err = loadstring(source, "@ZincMayhem/StyleSwitch")
+            if not chunk then window:SetStatus("Style switch error: "..tostring(err)); return end
+            local snapshot = {}
+            for key, value in pairs(state) do snapshot[key] = value end
+            local aliases = {}
+            for name in pairs(fragmentAliases) do aliases[name] = true end
+            local saved = {state = snapshot, aliases = aliases,
+                fragmentNames = customFragmentNames}
+            env.ZincMayhemTransferState = saved
+            env.ZincMayhemUIStyle = chosen
+            local success, result = pcall(chunk)
+            if not success then
+                warn("[Zinc Mayhem] UI switch failure: "..tostring(result))
+                env.ZincMayhemTransferState = saved
+                env.ZincMayhemUIStyle = selectedStyle
+                local restored, restoreError = pcall(chunk)
+                if not restored then
+                    warn("[Zinc Mayhem] UI restore failed: "..tostring(restoreError))
+                end
+            end
+        end)
+    end})
+if selectedStyle == "Zinc" then
+    styleSection:AddDropdown({Name = "Zinc window theme", Flag = "mayhem_theme",
+        Options = {"XP", "Dark", "Midnight"}, Default = state.uiTheme,
+        Callback = function(theme)
+            state.uiTheme = theme
+            window:SetTheme(theme)
+        end})
+end
 
+if state.bright then setFullbright(true) end
+if state.fovOn then setFov(true) end
 local clock = 0
 track(RunService.Heartbeat, function(dt)
     if closed then return end
