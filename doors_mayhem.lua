@@ -60,6 +60,24 @@ local function fetchZinc(url)
     end
 end
 
+-- Use MSESP for all visual markers (owned instances only).
+-- Match the version used by ROOMS: Revisited so shared sessions stay compatible.
+local MSESP = env.mstudio45_ESP
+if type(MSESP) ~= "table" or type(MSESP.Add) ~= "function" or MSESP.Destroyed then
+    local sourceURL = "https://raw.githubusercontent.com/mstudio45/MSESP/dbde68c85af504d58dac73a537fda21ca8fa626a/source.luau"
+    local ok, libraryOrError = pcall(function()
+        local source = game:HttpGet(sourceURL)
+        local chunk, compileError = loadstring(source, "@ZincMayhem/MSESP")
+        assert(chunk, compileError)
+        return chunk()
+    end)
+    if ok then MSESP = libraryOrError else
+        warn("[Zinc Mayhem] MSESP could not load: "..tostring(libraryOrError))
+    end
+end
+assert(type(MSESP) == "table" and type(MSESP.Add) == "function"
+    and not MSESP.Destroyed, "Zinc Mayhem requires a working MSESP library")
+
 local UI
 if selectedStyle == "Obsidian" then
     UI = fetchZinc(
@@ -74,7 +92,7 @@ end
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
     fragmentESP = false, bookESP = false, leverESP = false,
-    exitESP = false, entityESP = false,
+    keyESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false,
     fov = 90, spectate = false,
     playerColor = "Green", uiTheme = "XP",
@@ -99,6 +117,7 @@ local COLORS = {
     fragment = Color3.fromRGB(255, 105, 180),
     book = Color3.fromRGB(140, 170, 255),
     lever = Color3.fromRGB(255, 190, 65),
+    key = Color3.fromRGB(255, 240, 95),
     exit = Color3.fromRGB(70, 255, 160),
     entity = Color3.fromRGB(255, 125, 45),
 }
@@ -111,7 +130,7 @@ local PLAYER_PALETTE = {
 }
 COLORS.player = PLAYER_PALETTE[state.playerColor] or PLAYER_PALETTE.Green
 local LIMITS = {player = 10, objective = 12, fragment = 16,
-    book = 16, lever = 12, exit = 4, entity = 4}
+    book = 16, lever = 12, key = 12, exit = 4, entity = 4}
 
 local function track(signal, callback)
     local connection = signal:Connect(callback)
@@ -285,6 +304,52 @@ local function puzzleKind(instance)
     return nil
 end
 
+-- Keys are a separate category from generic puzzle objectives. Only exact
+-- key labels, pickup prompts, attributes and tags count (not keyboard/keybinds).
+local keyAliases = {}
+local function hasKeyName(value)
+    local label = norm(value)
+    if label == "key" or label == "hotelkey" or label == "cellarkey"
+        or label == "librarykey" or label == "exitkey" or label == "doorkey"
+        or label == "roomkey" or label == "goldkey" or label == "goldenkey"
+        or label == "skeletonkey" or label == "keypickup" or label == "keyitem"
+        or label == "keycollectible" or label == "keyobjective"
+        or label == "masterkey" or label == "rustykey" or label == "silverkey"
+        or label:match("^key%d+$") or label:match("^hotelkey%d+$")
+        or label:match("^cellarkey%d+$") then return true end
+    for alias in pairs(keyAliases) do if label == alias then return true end end
+    return false
+end
+
+local function isWorldKey(instance)
+    if hasKeyName(instance.Name) then return true end
+    for _, attribute in ipairs({"ItemName", "ItemId", "ItemType", "PickupName",
+        "DisplayName", "Collectible", "ObjectiveType"}) do
+        local value = instance:GetAttribute(attribute)
+        if type(value) == "string" and hasKeyName(value) then return true end
+    end
+    local ok, tags = pcall(CollectionService.GetTags, CollectionService, instance)
+    if ok and type(tags) == "table" then
+        for _, tag in ipairs(tags) do if hasKeyName(tag) then return true end end
+    end
+    if instance:IsA("ProximityPrompt") then
+        if hasKeyName(instance.ObjectText) then return true end
+        local action = norm(instance.ActionText)
+        if action:find("key", 1, true) and (
+            action:find("pickup", 1, true) or action:find("collect", 1, true)
+            or action:find("grab", 1, true) or action:find("take", 1, true)
+        ) then return true end
+        -- A prompt labeled "Use Key" on a door is not itself a key.
+        local parent = instance.Parent
+        for _ = 1, 2 do
+            if not parent or parent == Workspace then break end
+            if hasKeyName(parent.Name) then return true end
+            parent = parent.Parent
+        end
+    end
+    return false
+end
+
 -- A pickup under an avatar (especially a held "Handle" or fragment)
 -- must never become world ESP. Check every ancestor, not just the root model.
 local function insidePlayerCharacter(instance)
@@ -306,6 +371,7 @@ local function classify(instance)
     if isGlitchFragment(instance) then return "fragment" end
     local puzzle = puzzleKind(instance)
     if puzzle then return puzzle end
+    if isWorldKey(instance) then return "key" end
     if instance:IsA("ProximityPrompt") then return nil end
     local name = norm(instance.Name)
     if instance:IsA("Model") then
@@ -322,7 +388,7 @@ local function classify(instance)
     if name == "breakerbox" or name == "fusebox" or name == "fuse"
         or name == "fuses" or name == "paper" or name == "timelever"
         or name == "objective" or name == "objectiveitem"
-        or name == "key" or name == "hotelkey" or name == "button"
+        or name == "button"
         or name == "handle" or name == "guillotine" or name == "generator" then
         return "objective"
     end
@@ -344,7 +410,8 @@ local function index(instance)
         local model = target:FindFirstAncestorOfClass("Model")
         if model and ((kind == "fragment" and isGlitchFragment(model))
             or ((kind == "book" or kind == "lever")
-                and puzzleKind(model) == kind)) then
+                and puzzleKind(model) == kind)
+            or (kind == "key" and isWorldKey(model))) then
             target = model
         end
     end
@@ -356,7 +423,8 @@ track(Workspace.DescendantRemoving, function(instance)
     indexed[instance] = nil
     -- Prompt-derived markers clear on pickup/pull, including after streamed removal.
     if instance:IsA("ProximityPrompt") then
-        local kind = isGlitchFragment(instance) and "fragment" or puzzleKind(instance)
+        local kind = isGlitchFragment(instance) and "fragment"
+            or puzzleKind(instance) or (isWorldKey(instance) and "key")
         if kind then
             local node = instance.Parent
             for _ = 1, 3 do
