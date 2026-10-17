@@ -197,22 +197,81 @@ end
 local function norm(name)
     return tostring(name or ""):lower():gsub("[^%w]", "")
 end
+-- Team is authoritative when assigning Survivor/Entity. SelectedEntity
+-- is loadout metadata: a survivor can retain it from an earlier round.
+local ENTITY_ROLE = {
+    entity=true,entities=true,monster=true,monsters=true,killer=true,
+    killers=true,rush=true,figure=true,seek=true,bramble=true,
+    halt=true,eyes=true,jeff=true,jeffthekiller=true,
+}
+local SURVIVOR_ROLE = {
+    survivor=true,survivors=true,human=true,humans=true,
+    innocent=true,innocents=true,runner=true,runners=true,
+}
+local function roleToken(value)
+    local name=norm(value)
+    if SURVIVOR_ROLE[name] then return "Survivor" end
+    if ENTITY_ROLE[name] then return "Entity" end
+    return nil
+end
 local function roleOf(player)
-    local values = {}
-    if player.Team then table.insert(values, player.Team.Name) end
-    for _, key in ipairs({"Role", "Team", "CurrentRole", "SelectedEntity"}) do
-        local value = player:GetAttribute(key)
-        if type(value) == "string" then table.insert(values, value) end
+    if not player then return "Unknown" end
+    local team = player.Team
+    local teamRole = team and roleToken(team.Name)
+    if teamRole then return teamRole end
+    local char = player.Character
+    for _, obj in ipairs({player, char or player}) do
+        for _, key in ipairs({"Role", "CurrentRole", "Team", "Faction",
+            "CurrentEntity", "ActiveEntity", "EntityType"}) do
+            local ok, value = pcall(obj.GetAttribute, obj, key)
+            if ok then
+                local kind=roleToken(value)
+                if kind then return kind end
+            end
+        end
     end
-    local role = norm(table.concat(values, " "))
-    if role:find("survivor", 1, true) or role:find("human", 1, true) then return "Survivor" end
-    if role:find("entity", 1, true) or role:find("monster", 1, true) or role:find("killer", 1, true) then
-        return "Entity"
-    end
-    for _, name in ipairs({"Figure", "Seek", "Rush", "Eyes", "Halt", "Bramble"}) do
-        if role:find(norm(name), 1, true) then return "Entity" end
+    if char then
+        local found = roleToken(char.Name)
+        if found then return found end
     end
     return "Unknown"
+end
+
+-- Never exclude a survivor just because its stale SelectedEntity points to a
+-- monster. When enemyOnly is enabled, unknown-role players are still visible
+-- unless they share our actual team.
+local function playerESPRelation(localPlayer, otherPlayer, enemyOnly)
+    if not otherPlayer or otherPlayer == localPlayer then return false, "self" end
+    local sameTeam = localPlayer.Team ~= nil and otherPlayer.Team ~= nil
+        and localPlayer.Team == otherPlayer.Team
+    local ours, theirs = roleOf(localPlayer), roleOf(otherPlayer)
+    if sameTeam then
+        if enemyOnly then return false, "teammate" end
+        return true, "friend"
+    end
+    if ours ~= "Unknown" and theirs ~= "Unknown" then
+        if ours == theirs then
+            if enemyOnly then return false, "same role" end
+            return true, "friend"
+        end
+        return true, "enemy"
+    end
+    return true, "neutral"
+end
+
+local function playerESPPart(character)
+    if not character then return nil, nil end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health <= 0 then return nil, "dead" end
+    local dead = character:GetAttribute("Dead")
+    if dead == true or character:GetAttribute("IsDead") == true then
+        return nil, "dead"
+    end
+    local root = character:FindFirstChild("HumanoidRootPart")
+        or character.PrimaryPart
+        or character:FindFirstChildWhichIsA("BasePart", true)
+    if not root then return nil, "no root part" end
+    return root, humanoid and "humanoid" or "custom rig"
 end
 local fragmentAliases = {}
 local function hasFragmentName(value)
@@ -581,23 +640,22 @@ local function updateESP()
     local origin = (myRoot and myRoot.Position) or (camera and camera.CFrame.Position) or Vector3.new()
     local candidates = {player = {}, objective = {}, fragment = {}, book = {},
         lever = {}, key = {}, exit = {}, entity = {}}
-    local localRole = roleOf(LocalPlayer)
     if state.playerESP then
         for _, other in ipairs(Players:GetPlayers()) do
             if other ~= LocalPlayer and other.Character
                 and other.Character ~= LocalPlayer.Character then
-                local humanoid = other.Character:FindFirstChildOfClass("Humanoid")
-                local root = other.Character:FindFirstChild("HumanoidRootPart")
-                local targetRole = roleOf(other)
-                local known = localRole ~= "Unknown" and targetRole ~= "Unknown"
-                local enemy = known and targetRole ~= localRole
-                if humanoid and humanoid.Health > 0 and root
-                    and (not state.enemyOnly or not known or enemy) then
-                    table.insert(candidates.player, {
-                        instance = other.Character, distance = (origin - root.Position).Magnitude,
-                        color = (not known) and COLORS.neutral
-                            or (enemy and COLORS.player or COLORS.friend),
-                    })
+                local show, relation = playerESPRelation(LocalPlayer, other, state.enemyOnly)
+                if show then
+                    local root = playerESPPart(other.Character)
+                    if root then
+                        table.insert(candidates.player, {
+                            instance = other.Character,
+                            distance = (origin-root.Position).Magnitude,
+                            color = relation == "enemy" and COLORS.player
+                                or relation == "friend" and COLORS.friend
+                                or COLORS.neutral,
+                        })
+                    end
                 end
             end
         end
@@ -925,7 +983,28 @@ playersSection:AddDropdown({Name = "Player ESP color", Flag = "mayhem_player_col
             COLORS.player = PLAYER_PALETTE[color]
         end
     end})
-playersSection:AddLabel("Same-team players: blue. Unknown roles: cyan.")
+playersSection:AddLabel("Enemy: green; friend: blue; unknown: cyan.")
+playersSection:AddButton({Name="Inspect player ESP filter (F9)",
+    ButtonText="Inspect", Callback=function()
+        local total,shown=0,0
+        print("[Zinc Mayhem] Local role: "..roleOf(LocalPlayer))
+        for _,other in ipairs(Players:GetPlayers()) do
+            if other~=LocalPlayer then
+                total=total+1
+                local show, relation=playerESPRelation(LocalPlayer,other,state.enemyOnly)
+                local root, rigType=playerESPPart(other.Character)
+                if show and root then shown=shown+1 end
+                print("[Zinc Mayhem] Player "..other.Name
+                    .." role="..roleOf(other)
+                    .." team="..(other.Team and other.Team.Name or "none")
+                    .." relation="..relation
+                    .." rig="..tostring(rigType)
+                    .." visible="..tostring(show and root~=nil))
+            end
+        end
+        window:SetStatus("Player ESP: "..shown.."/"..total
+            .." candidates; diagnostics in F9")
+    end})
 local mapSection = esp:CreateSection("Map objectives")
 mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
     Default = state.objectiveESP, Callback = function(v) state.objectiveESP = v end})
