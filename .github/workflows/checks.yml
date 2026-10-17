@@ -21,9 +21,12 @@ jobs:
           luac5.4 -p tests/mayhem_dispatch.lua
           luac5.4 -p tests/mayhem_fragments.lua
           luac5.4 -p tests/mayhem_guard.lua
+          luac5.4 -p lib/MayhemObsidian.lua
+          luac5.4 -p tests/mayhem_ui.lua
       - name: Hub mocked regression tests
         run: |
           lua5.4 tests/smoke.lua
           lua5.4 tests/mayhem_dispatch.lua
           lua5.4 tests/mayhem_fragments.lua
           lua5.4 tests/mayhem_guard.lua
+          lua5.4 tests/mayhem_ui.lua
