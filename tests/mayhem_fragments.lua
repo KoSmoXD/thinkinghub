@@ -7,10 +7,17 @@ local last = assert(source:find("\nlocal function index(instance)", first, true)
 local extracted = source:sub(first, last - 1)
 local prefix = [[
 local function norm(s) return tostring(s or ""):lower():gsub("[^%w]", "") end
-local Players = {GetPlayerFromCharacter = function() return nil end}
+local Workspace = {}
+local LocalPlayer = {Character = {Name = "LocalAvatar"}}
+local Players = {GetPlayerFromCharacter = function(_, instance)
+    if instance.Name == "OtherAvatar" then return {Name = "RemoteUser"} end
+    return nil
+end}
 ]]
-local module = assert(load(prefix .. extracted .. "\nreturn classify, fragmentAliases\n", "@mayhem_classifier"))
-local classify, aliases = module()
+local module = assert(load(prefix .. extracted
+    .. "\nreturn classify, fragmentAliases, LocalPlayer.Character, Workspace\n",
+    "@mayhem_classifier"))
+local classify, aliases, localCharacter, workspace = module()
 
 local function fake(name, kind, opts)
     opts = opts or {}
@@ -51,4 +58,23 @@ verify("overhaul alias", fake("CorruptedShard", "BasePart"), "fragment")
 verify("overhaul alias model suffix", fake("CorruptedShardPickup", "Model"), "fragment")
 aliases.corruptedshard = nil
 verify("alias clears", fake("CorruptedShard", "BasePart"), nil)
-print("mayhem fragment classifier: ok")
+-- Regression: formerly the indexer excluded only the character root,
+-- allowing equipped item parts and pickup prompts to highlight our avatar.
+local localTool = fake("EquippedTool", "Model", {parent = localCharacter})
+local localPart = fake("Handle", "BasePart", {parent = localTool})
+local localFragment = fake("GlitchFragment", "BasePart", {parent = localTool})
+local localPrompt = fake("Interact", "ProximityPrompt",
+    {parent = localPart, objectText = "Glitch Fragment"})
+verify("local character root", localCharacter, nil)
+verify("local equipped handle", localPart, nil)
+verify("local carried fragment", localFragment, nil)
+verify("local carried prompt", localPrompt, nil)
+local remoteRig = fake("OtherAvatar", "Model", {parent = workspace})
+local remoteTool = fake("Tool", "Model", {parent = remoteRig})
+verify("other player's carried objective", fake("Handle", "BasePart",
+    {parent = remoteTool}), nil)
+verify("other player's carried fragment", fake("GlitchFragment", "BasePart",
+    {parent = remoteTool}), nil)
+verify("world fragments unaffected", fake("GlitchFragment", "Model",
+    {parent = workspace}), "fragment")
+print("mayhem fragment + character exclusion: ok")
