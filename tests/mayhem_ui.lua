@@ -38,8 +38,15 @@ local function group()
     end
     return g
 end
+local mainFrame = {Name = "Main"}
+local capturedGrip
+function rawLibrary:MakeDraggable(frame, grip, ignoreToggled, mainWindow)
+    assert(frame == mainFrame and grip.Name == "MayhemBottomDrag")
+    assert(ignoreToggled == false and mainWindow == true)
+    capturedGrip = grip
+end
 function rawLibrary:CreateWindow()
-    return {AddTab = function(_,name)
+    return {MainFrame = mainFrame, AddTab = function(_,name)
         assert(type(name) == "string")
         return {AddLeftGroupbox = function() return group() end,
             AddRightGroupbox = function() return group() end}
@@ -53,6 +60,11 @@ function rawLibrary:Unload()
     if callback then callback() end
 end
 local sandbox = {
+    Instance = {new = function(class)
+        assert(class == "Frame")
+        return {ClassName = class}
+    end},
+    UDim2 = {new = function(...) return {...} end},
     game = {HttpGet = function() return "mock-ob-library" end},
     loadstring = function(text)
         assert(text == "mock-ob-library")
@@ -62,6 +74,8 @@ local sandbox = {
 setmetatable(sandbox,{__index=_G})
 local ui=assert(load(source, "@MayhemObsidian", "t", sandbox))()
 local window=ui:CreateWindow({Title="Zinc Mayhem",Subtitle="Test"})
+assert(capturedGrip and capturedGrip.Parent == mainFrame and capturedGrip.Active,
+    "Obsidian footer should be draggable")
 local home=window:CreateTab("Home")
 local section=home:CreateSection("General")
 local label=section:AddLabel("Original")
