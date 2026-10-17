@@ -25,6 +25,21 @@ function Adapter:CreateWindow(opts)
         Center = true, AutoShow = true, Resizable = true,
         NotifySide = "Right", ShowCustomCursor = false,
     })
+    -- A footer grip for mouse/touch, preserving the original title-bar drag
+    -- and keeping Obsidian's lower-right resize button uncovered.
+    local mainFrame = actual.MainFrame
+    if mainFrame and type(Library.MakeDraggable) == "function" then
+        local bottomGrip = Instance.new("Frame")
+        bottomGrip.Name = "MayhemBottomDrag"
+        bottomGrip.Position = UDim2.new(0, 8, 1, -24)
+        bottomGrip.Size = UDim2.new(1, -48, 0, 19)
+        bottomGrip.BackgroundTransparency = 1
+        bottomGrip.BorderSizePixel = 0
+        bottomGrip.Active = true
+        bottomGrip.ZIndex = 20
+        bottomGrip.Parent = mainFrame
+        Library:MakeDraggable(mainFrame, bottomGrip, false, true)
+    end
     local wrapper = {actual = actual, status = nil, statusMessage = "Ready"}
     function wrapper:CreateTab(name)
         local rawTab = actual:AddTab(name)
