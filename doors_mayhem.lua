@@ -245,7 +245,7 @@ local function showMarker(instance, details)
             record.billboard, record.text = billboard, text
         end
         if record.text then
-            record.text.Text = "GLITCH FRAGMENT  ["..math.floor(details.distance).. "m]"
+            record.text.Text = "GLITCH FRAGMENT  ["..math.floor(details.distance).. " studs]"
         end
     elseif record.billboard then
         record.billboard:Destroy()
