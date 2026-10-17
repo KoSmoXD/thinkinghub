@@ -29,8 +29,9 @@ local function visible(item)
     end
     return true
 end
-local function guiLabel(item)
-    return norm(item.Text) ~= "" and norm(item.Text) or norm(item.Name)
+local function buttonText(item)
+    local ok,value=pcall(function() return item.Text end)
+    return ok and type(value)=="string" and value or ""
 end
 local function puzzleName(name, extra)
     local value=norm(name)
@@ -42,7 +43,7 @@ end
 local function matchText(expected,button)
     local want=norm(expected)
     if want=="" then return false end
-    return want==norm(button.Text) or want==norm(button.Name)
+    return want==norm(buttonText(button)) or want==norm(button.Name)
         or want==norm(attr(button,"Value")) or want==norm(attr(button,"Answer"))
 end
 local function getExpected(root,button)
@@ -181,7 +182,7 @@ function Module.new(deps)
             end
             local step=attr(root,"Stage") or attr(root,"Round")
                 or attr(root,"PuzzleStep") or ""
-            local signature=tostring(answer).."|"..tostring(answer.Text)
+            local signature=tostring(answer).."|"..buttonText(answer)
                 .."|"..tostring(step)
             if self.clickedSteps[signature] then
                 self.status="Answer sent; waiting for puzzle to advance"
@@ -234,7 +235,7 @@ function Module.new(deps)
             for _,button in ipairs(puzzleButtons(root)) do
                 shown=shown+1
                 rows[#rows+1]="[Zinc Mayhem] button "..button.Name
-                    .." text="..tostring(button.Text)
+                    .." text="..buttonText(button)
                     .." correct="..tostring(attr(button,"IsCorrect"))
                 if shown>=12 then break end
             end
