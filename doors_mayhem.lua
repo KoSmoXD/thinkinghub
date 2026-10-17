@@ -133,10 +133,24 @@ local function isGlitchFragment(instance)
     return false
 end
 
+-- A pickup under an avatar (especially a held "Handle" or fragment)
+-- must never become world ESP. Check every ancestor, not just the root model.
+local function insidePlayerCharacter(instance)
+    local current = instance
+    while current and current ~= Workspace do
+        if current == LocalPlayer.Character then return true end
+        if current:IsA("Model") and Players:GetPlayerFromCharacter(current) then
+            return true
+        end
+        current = current.Parent
+    end
+    return false
+end
+
 local function classify(instance)
     if not (instance:IsA("Model") or instance:IsA("BasePart")
         or instance:IsA("ProximityPrompt")) then return nil end
-    if instance:IsA("Model") and Players:GetPlayerFromCharacter(instance) then return nil end
+    if insidePlayerCharacter(instance) then return nil end
     if isGlitchFragment(instance) then return "fragment" end
     if instance:IsA("ProximityPrompt") then return nil end
     local name = norm(instance.Name)
@@ -271,7 +285,8 @@ local function updateESP()
     local localRole = roleOf(LocalPlayer)
     if state.playerESP then
         for _, other in ipairs(Players:GetPlayers()) do
-            if other ~= LocalPlayer and other.Character then
+            if other ~= LocalPlayer and other.Character
+                and other.Character ~= LocalPlayer.Character then
                 local humanoid = other.Character:FindFirstChildOfClass("Humanoid")
                 local root = other.Character:FindFirstChild("HumanoidRootPart")
                 local targetRole = roleOf(other)
@@ -289,7 +304,9 @@ local function updateESP()
         -- Prefer a named model over the parts it contains; one label per pickup.
         local parentModel = instance:FindFirstAncestorOfClass("Model")
         local duplicate = parentModel and indexed[parentModel] == kind
-        if not duplicate and ((kind == "objective" and state.objectiveESP)
+        -- Characters can acquire items after initial indexing; exclude them here too.
+        if not duplicate and not insidePlayerCharacter(instance)
+            and ((kind == "objective" and state.objectiveESP)
             or (kind == "fragment" and state.fragmentESP)
             or (kind == "exit" and state.exitESP)
             or (kind == "entity" and state.entityESP)) then
@@ -384,8 +401,12 @@ local function diagnostics()
     local counted = {player = 0, objective = 0, fragment = 0, exit = 0, entity = 0}
     local examples = {}
     for inst, kind in pairs(indexed) do
-        counted[kind] = counted[kind] + 1
-        if #examples < 12 then table.insert(examples, kind.." = "..inst:GetFullName()) end
+        if not insidePlayerCharacter(inst) then
+            counted[kind] = counted[kind] + 1
+            if #examples < 12 then
+                table.insert(examples, kind.." = "..inst:GetFullName())
+            end
+        end
     end
     print("[Zinc Mayhem] PlaceId="..tostring(game.PlaceId)
         .." GameId="..tostring(game.GameId).." Team="..tostring(LocalPlayer.Team))
