@@ -19,9 +19,9 @@ local Players = {GetPlayerFromCharacter = function(_, instance)
 end}
 ]]
 local module = assert(load(prefix .. extracted
-    .. "\nreturn classify, fragmentAliases, LocalPlayer.Character, Workspace, bookAliases, leverAliases\n",
+    .. "\nreturn classify, fragmentAliases, LocalPlayer.Character, Workspace, bookAliases, leverAliases, keyAliases\n",
     "@mayhem_classifier"))
-local classify, aliases, localCharacter, workspace, books, levers = module()
+local classify, aliases, localCharacter, workspace, books, levers, keys = module()
 
 local function fake(name, kind, opts)
     opts = opts or {}
@@ -130,4 +130,32 @@ verify("local carried book excluded", fake("GlitchBook", "Model",
     {parent = localTool}), nil)
 verify("other player's lever excluded", fake("CellarLever", "Model",
     {parent = remoteTool}), nil)
-print("mayhem fragment + book + lever + character exclusion: ok")
+-- Independent Key ESP classification, no unintended keyboard/door overlays.
+verify("simple key", fake("Key", "BasePart", {parent = workspace}), "key")
+verify("hotel key", fake("HotelKey", "Model", {parent = workspace}), "key")
+verify("numbered key", fake("Key_03", "Model", {parent = workspace}), "key")
+verify("golden key", fake("GoldenKey", "BasePart", {parent = workspace}), "key")
+verify("exit key", fake("ExitKey", "Model", {parent = workspace}), "key")
+verify("key pickup text", fake("UsePrompt", "ProximityPrompt",
+    {parent = workspace, objectText = "Key", actionText = "Grab"}), "key")
+verify("key prompt action", fake("UsePrompt", "ProximityPrompt",
+    {parent = workspace, objectText = "Pickup", actionText = "Collect Key"}), "key")
+verify("no false positive for keyhole", fake("Keyhole", "BasePart",
+    {parent = workspace}), nil)
+verify("door prompt does not become key", fake("UsePrompt", "ProximityPrompt",
+    {parent = workspace, objectText = "Door", actionText = "Use Key"}), nil)
+verify("keyboard not a key", fake("Keyboard", "Model", {parent = workspace}), nil)
+verify("key item attribute", fake("Loot", "BasePart",
+    {parent = workspace, attrs = {ItemName = "CellarKey"}}), "key")
+local keyTagged = fake("GenericPickup", "Model", {parent = workspace})
+keyTagged.tags = {"HotelKey"}
+verify("CollectionService key tag", keyTagged, "key")
+keys.riftpass = true
+verify("custom key alias", fake("RiftPass", "Model", {parent = workspace}), "key")
+keys.riftpass = nil
+verify("removed key alias", fake("RiftPass", "Model", {parent = workspace}), nil)
+verify("own carried key excluded", fake("HotelKey", "Model",
+    {parent = localTool}), nil)
+verify("other player's carried key excluded", fake("GoldenKey", "BasePart",
+    {parent = remoteTool}), nil)
+print("mayhem fragment + book + lever + key + character exclusion: ok")
