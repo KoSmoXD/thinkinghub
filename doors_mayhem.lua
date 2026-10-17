@@ -94,6 +94,7 @@ local state = {
     fragmentESP = false, bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false, infiniteStamina = false,
+    rushAuto = false, rushAbility = true, rushManual = false,
     fov = 90, spectate = false,
     playerColor = "Green", uiTheme = "XP",
 }
@@ -121,6 +122,42 @@ do
 end
 if state.infiniteStamina and staminaController then
     staminaController:Enabled(true)
+end
+
+-- Rush Auto Play: PathfindingService chases survivors, input hooks are opt-in.
+-- Ability key mapping differs by game version; leave unmapped keys at None.
+local rushController
+local rushModuleURL = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemRushAuto.lua"
+do
+    local ok, created = pcall(function()
+        local source = game:HttpGet(rushModuleURL)
+        local chunk, compileError = loadstring(source, "@ZincMayhem/RushAuto")
+        assert(chunk, compileError)
+        local module = chunk()
+        local inputManager = game:GetService("VirtualInputManager")
+        local validKeys = {
+            Q=true,E=true,R=true,F=true,Z=true,X=true,C=true,V=true,
+            One=true,Two=true,Three=true,Four=true,Five=true,
+            MouseButton1=false,
+        }
+        local function sendAbility(binding)
+            if not validKeys[binding] then return false end
+            local key = Enum.KeyCode[binding]
+            if not key then return false end
+            local success = pcall(function()
+                inputManager:SendKeyEvent(true,key,false,game)
+                inputManager:SendKeyEvent(false,key,false,game)
+            end)
+            return success
+        end
+        return module.new({
+            player=LocalPlayer, players=Players,
+            pathfinding=game:GetService("PathfindingService"),
+            workspace=Workspace, sendAbility=sendAbility,
+        })
+    end)
+    if ok then rushController=created
+    else warn("[Zinc Mayhem] Rush Auto Play unavailable: "..tostring(created)) end
 end
 
 local closed = false
@@ -716,8 +753,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.6 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.6 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.7 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.7 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -733,6 +770,7 @@ unload = function()
     setFullbright(false)
     restoreCamera()
     if staminaController then staminaController:Unload() end
+    if rushController then rushController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
     table.clear(indexed)
@@ -740,7 +778,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.6.0",
+env.ZincMayhem = {Unload = unload, Version = "0.7.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
@@ -784,6 +822,77 @@ movementSection:AddButton({Name = "Inspect local stamina sources",
         window:SetStatus("Stamina scan: "..#found.." candidate(s); details in F9")
     end})
 movementSection:AddLabel("No sources found? The game may hide stamina internally.")
+
+local rushTab = window:CreateTab("Rush")
+local rushSection = rushTab:CreateSection("Rush Auto Play (beta)")
+rushSection:AddLabel("Rush only: nearest survivor, pathfinding, stuck recovery.")
+local rushStatus = rushSection:AddLabel(
+    rushController and rushController:Status() or "Rush controller unavailable")
+rushSection:AddToggle({Name="Auto Play: chase nearest survivor",
+    Flag="mayhem_rush_autoplay", Default=state.rushAuto,
+    Callback=function(value)
+        state.rushAuto=value
+        if rushController then
+            rushController:SetEnabled(value)
+            window:SetStatus("Rush: "..rushController:Status())
+        else window:SetStatus("Rush controller unavailable") end
+    end})
+rushSection:AddToggle({Name="Use Rush abilities automatically",
+    Flag="mayhem_rush_abilities", Default=state.rushAbility,
+    Callback=function(value)
+        state.rushAbility=value
+        if rushController then rushController.autoAbility=value end
+    end})
+rushSection:AddToggle({Name="Manual Rush role override (if detection fails)",
+    Flag="mayhem_rush_override", Default=state.rushManual,
+    Callback=function(value)
+        state.rushManual=value
+        if rushController then rushController.manualRush=value end
+    end})
+rushSection:AddButton({Name="Re-scan nearest survivor and rebuild path",
+    ButtonText="Rescan", Callback=function()
+        if not rushController then return end
+        local player,dist=rushController:FindNearest()
+        if player then
+            rushController.target=player
+            rushController.lastPlan=-math.huge
+            rushController:Plan("manual rescan")
+            window:SetStatus("Rush target: "..player.Name.." | "..math.floor(dist).." studs")
+        else
+            window:SetStatus("No valid target / Rush character not loaded")
+        end
+    end})
+local rushAbilities = rushTab:CreateSection("Auto ability key mapping")
+rushAbilities:AddLabel("Set the in-game Rush skill keys below; unknown defaults are None.")
+local keys = {"None","Q","E","R","F","Z","X","C","V",
+    "One","Two","Three","Four","Five"}
+for _, skill in ipairs({
+    {"rushHour","Rush Hour (main)",45},
+    {"comingThrough","Coming Through (charge)",18},
+    {"shockwave","Shockwave",75},
+    {"blackout","Blackout",250},
+}) do
+    local id, label=skill[1],skill[2]
+    rushAbilities:AddDropdown({Name=label,Flag="mayhem_rush_"..id,
+        Options=keys,
+        Default=(rushController and rushController.abilityKeys[id]) or "None",
+        Callback=function(choice)
+            if rushController then rushController.abilityKeys[id]=choice end
+        end})
+end
+rushAbilities:AddLabel("Inputs use VirtualInputManager; executors may block them.")
+rushAbilities:AddLabel("Blackout only triggers if damage is detectable (150+).")
+if rushController then
+    rushController.autoAbility=state.rushAbility
+    rushController.manualRush=state.rushManual
+    if type(transfer)=="table" and type(transfer.rushKeys)=="table" then
+        for name, key in pairs(transfer.rushKeys) do
+            if rushController.abilityKeys[name] ~= nil
+                and type(key)=="string" then rushController.abilityKeys[name]=key end
+        end
+    end
+    if state.rushAuto then rushController:SetEnabled(true) end
+end
 
 local esp = window:CreateTab("ESP")
 local playersSection = esp:CreateSection("Teams")
@@ -969,7 +1078,8 @@ styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
             local saved = {state = snapshot, aliases = aliases,
                 bookAliases = books, leverAliases = levers, keyAliases = keys,
                 fragmentNames = customFragmentNames, keyNames = customKeyNames,
-                bookNames = customBookNames, leverNames = customLeverNames}
+                bookNames = customBookNames, leverNames = customLeverNames,
+                rushKeys = (rushController and rushController.abilityKeys) or {}}
             env.ZincMayhemTransferState = saved
             env.ZincMayhemUIStyle = chosen
             local success, result = pcall(chunk)
@@ -999,6 +1109,7 @@ local clock, scanClock = 0, 0
 track(RunService.Heartbeat, function(dt)
     if closed then return end
     if staminaController then staminaController:Step(dt) end
+    if rushController then rushController:Step(dt) end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
     if scanClock >= 12 and (state.fragmentESP or state.bookESP
@@ -1028,6 +1139,7 @@ track(RunService.Heartbeat, function(dt)
     clock = 0
     applyVisuals()
     if staminaController then staminaLabel:Set(staminaController:Status()) end
+    if rushController then rushStatus:Set(rushController:Status()) end
     local playersCount, objectiveCount, fragmentCount, bookCount,
         leverCount, keyCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
