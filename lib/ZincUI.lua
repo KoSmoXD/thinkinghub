@@ -205,6 +205,7 @@ function Window:Minimize(force)
     self._sidebar.Visible = not self._minimized
     self._contentHost.Visible = not self._minimized
     self._statusBar.Visible = not self._minimized
+    self._bottomDragHandle.Visible = not self._minimized
     self._notifications.Visible = not self._minimized
     self._minimizeButton.Text = self._minimized and "+" or "_"
 end
@@ -478,7 +479,7 @@ function Zinc:CreateWindow(options)
     local statusBar = make("Frame", {
         Position = UDim2.new(0, 5, 1, -25),
         Size = UDim2.new(1, -10, 0, 20),
-        BorderSizePixel = 1,
+        BorderSizePixel = 1, Active = true,
     }, main)
     self:_bind(statusBar, { BackgroundColor3 = "Background", BorderColor3 = "Border" })
     self._statusBar = statusBar
@@ -497,6 +498,16 @@ function Zinc:CreateWindow(options)
     })
     self:_bind(signature, { TextColor3 = "Muted" })
 
+    -- The lower status strip and the actual bottom edge both drag the window.
+    -- Small separate edge makes this work even if the status text is clipped.
+    local bottomDragHandle = make("Frame", {
+        Position = UDim2.new(0, 5, 1, -6),
+        Size = UDim2.new(1, -10, 0, 6),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0, Active = true, ZIndex = 3,
+    }, main)
+    self._bottomDragHandle = bottomDragHandle
+
     local notifications = make("Frame", {
         AnchorPoint = Vector2.new(1, 1),
         Position = UDim2.new(1, -12, 1, -31),
@@ -511,7 +522,8 @@ function Zinc:CreateWindow(options)
     }, notifications)
 
     local dragging, dragStart, startPosition, touchDrag = false, nil, nil, nil
-    self:_connect(header.InputBegan, function(input)
+    local function beginWindowDrag(input)
+        if self._destroyed then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
@@ -519,7 +531,11 @@ function Zinc:CreateWindow(options)
             startPosition = main.Position
             touchDrag = input.UserInputType == Enum.UserInputType.Touch and input or nil
         end
-    end)
+    end
+    -- Header dragging still works; footer + lower edge are equally draggable.
+    for _, target in ipairs({header, statusBar, statusLabel, signature, bottomDragHandle}) do
+        self:_connect(target.InputBegan, beginWindowDrag)
+    end
     self:_connect(UserInputService.InputChanged, function(input)
         if not dragging then return end
         if input.UserInputType ~= Enum.UserInputType.MouseMovement and input ~= touchDrag then return end
