@@ -208,3 +208,11 @@ Detection excludes objects nested inside player characters, and it does not auto
 ### Obsidian window toggle (v0.5)
 
 In **DOORS: MAYHEM / Overhaul Testing**, press **Right Shift** to hide or show the **Obsidian** interface. This calls Obsidian's native toggle and does not unload the hub or reset ESP settings. The **ZincUI** interface retains **Right Control**. The keybind applies when the UI style is selected under **Visual > Interface > UI library**.
+
+### Experimental infinite stamina (MAYHEM v0.6)
+
+New **Player > Movement > Infinite stamina (experimental)** toggle for DOORS: MAYHEM and Overhaul Testing. This is a best-effort **local-only refill**, not a proven bypass of the game's authoritative stamina mechanics. It searches the local player, character, and their descendant **NumberValue/IntValue** objects or numeric attributes named `Stamina`, `CurrentStamina`, `SprintStamina` and similar. It tries to refill them to the locally exposed `MaxStamina` (or a 100 fallback) every 0.1 seconds and discovers newly spawned sources periodically.
+
+**Player > Inspect local stamina sources** prints candidate paths to the F9 console. The live status label distinguishes "No accessible stamina source found" from client writes; even a successful client write does **not** confirm server-authoritative stamina will stay full. If MAYHEM computes stamina inside a private Lua closure or on the server, this toggle will not bypass it. No arbitrary closures, game remotes, or other players' data are touched.
+
+The stamina controller does not write to PlayerGui stamina bars, does not persist changes when disabled, and stops on unload or UI reload. The toggle is preserved during ZincUI/Obsidian style changes. This feature has **not been verified in a live MAYHEM round**.
