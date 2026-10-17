@@ -31,7 +31,7 @@ Choose **Home > General > UI style > Zinc** to replace Obsidian with the public 
 
 Switching styles rebuilds the client hub, preserves currently selected feature values (including colors, method, speed and toggles), and restores movement-related toggles last. The chosen style remains selected during the current client environment session. A fresh client session defaults to Obsidian; saved config files remain unchanged. If ZincUI fails to download or initialize, the hub attempts Obsidian fallback.
 
-The custom ZincUI style is a single Windows XP-inspired application window, with a blue title bar, left navigation, square beveled controls and bottom status bar. It supports mouse/touch, sections, dropdowns, buttons, sliders, color pickers, notifications and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
+The custom ZincUI style is a single Windows XP-inspired application window, with a blue title bar, left navigation, square beveled controls and bottom status bar. Drag the window using the title bar, the bottom status bar, or the narrow lower edge with mouse or touch. It supports mouse/touch, sections, dropdowns, buttons, sliders, color pickers, notifications and Right Control to show/hide the menu. Live ROOMS: Revisited rendering and interaction are not yet verified.
 
 ## Movement and interaction
 
@@ -166,6 +166,9 @@ The offline CI suite parses `doors_mayhem.lua` and runs `tests/mayhem_dispatch.l
 
 
 ### Mayhem UI/ESP bug fixes (v0.3 beta)
+
+When using Mayhem in Obsidian mode, its adapter also provides a draggable bottom-left footer grip, while leaving Obsidian's lower-right resize control intact.
+
 
 - The pink color previously used for generic world entities is now orange. Player ESP defaults to **green** for confirmed opponents, **blue** for same-team players, and **cyan** when team/role information is missing. The **Player ESP color** dropdown changes the confirmed-opponent color (Green/Blue/Cyan/Yellow/Red).
 - The Mayhem module now supports **Home / Visual > Interface > UI library > Zinc or Obsidian**, using the shared Obsidian library with a compatibility facade in [lib/MayhemObsidian.lua](lib/MayhemObsidian.lua). Selecting a new UI style reruns the game module, copies feature settings and fragment aliases, and unloads the old window. This is not the XP theme selector.
