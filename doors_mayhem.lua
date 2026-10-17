@@ -95,7 +95,7 @@ local COLORS = {
     friend = Color3.fromRGB(95, 160, 255),
     neutral = Color3.fromRGB(50, 225, 225),
     objective = Color3.fromRGB(255, 220, 80),
-    fragment = Color3.fromRGB(80, 255, 255),
+    fragment = Color3.fromRGB(255, 105, 180),
     exit = Color3.fromRGB(70, 255, 160),
     entity = Color3.fromRGB(255, 125, 45),
 }
@@ -577,7 +577,7 @@ playersSection:AddLabel("Same-team players: blue. Unknown roles: cyan.")
 local mapSection = esp:CreateSection("Map objectives")
 mapSection:AddToggle({Name = "Objectives (yellow)", Flag = "mayhem_objectives",
     Default = state.objectiveESP, Callback = function(v) state.objectiveESP = v end})
-mapSection:AddToggle({Name = "Glitch Fragment ESP (cyan + distance)",
+mapSection:AddToggle({Name = "Glitch Fragment ESP (pink + distance)",
     Flag = "mayhem_fragments", Default = state.fragmentESP,
     Callback = function(v) state.fragmentESP = v end})
 local fragmentSection = esp:CreateSection("Glitch Fragment detection")
