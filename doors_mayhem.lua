@@ -91,7 +91,8 @@ end
 
 local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
-    fragmentESP = false, fragmentGame = false, bookESP = false, leverESP = false,
+    fragmentESP = false, fragmentGame = false, fragmentGuiAlias = "",
+    bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
     bright = false, fovOn = false, infiniteStamina = false,
     entityAuto = false, entityAbility = true, entityProfile = "Auto",
@@ -599,8 +600,9 @@ do
     if ok then fragmentGameController=result
     else warn("[Zinc Mayhem] Fragment Game unavailable: "..tostring(result)) end
 end
-if state.fragmentGame and fragmentGameController then
-    fragmentGameController:SetEnabled(true)
+if fragmentGameController then
+    fragmentGameController.guiAlias=state.fragmentGuiAlias
+    if state.fragmentGame then fragmentGameController:SetEnabled(true) end
 end
 
 local function positionOf(instance)
@@ -1129,6 +1131,16 @@ fragmentGameSection:AddToggle({
             fragmentGameController:SetEnabled(enabled)
             window:SetStatus(fragmentGameController:Status())
         else window:SetStatus("Fragment game controller unavailable") end
+    end})
+fragmentGameSection:AddTextbox({
+    Name="Puzzle GUI name (optional alias)", Flag="mayhem_fragment_gui",
+    Default=state.fragmentGuiAlias,
+    Placeholder="e.g. GlitchFragmentGUI",
+    Callback=function(value)
+        state.fragmentGuiAlias=tostring(value or "")
+        if fragmentGameController then
+            fragmentGameController.guiAlias=state.fragmentGuiAlias
+        end
     end})
 fragmentGameSection:AddButton({
     Name="Inspect visible fragment puzzle (F9)", ButtonText="Inspect",
