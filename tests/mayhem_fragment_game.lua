@@ -146,4 +146,34 @@ entity=false
 game:SetEnabled(true)
 game:Step(1)
 assert(#clicked==4,"unrelated ZincUI must not be interpreted as puzzle")
+
+-- Prompt reach is measured from its actual supported parent position.
+local probePrompt
+local probe=Module.new({player=player,workspace=world,
+    isFragment=function(item)return item==probePrompt end,
+    activatePrompt=function(item)activated[#activated+1]=item;return true end})
+local function interactionCount(parent,limit)
+    probePrompt=parent:Add(node("ProximityPrompt","Probe"))
+    probePrompt.MaxActivationDistance=limit
+    probe:SetEnabled(true)
+    local before=#activated
+    probe:Step(1)
+    return #activated-before
+end
+assert(interactionCount(near,2)==0,
+    "configured ranges below three studs must not be expanded")
+assert(interactionCount(near,0)==0,"zero range must not be expanded")
+local model=world:Add(node("Model","GlitchFragment"))
+model.PrimaryPart=near
+assert(interactionCount(model,10)==1,"model-parented prompts use PrimaryPart")
+local attachment=far:Add(node("Attachment","FragmentAnchor"))
+attachment.WorldPosition=vector(3)
+assert(interactionCount(attachment,5)==1,
+    "attachment prompt must use WorldPosition instead of its distant parent part")
+attachment.WorldPosition=vector(12)
+assert(interactionCount(attachment,5)==0,
+    "out-of-range attachment prompt must be excluded")
+local noPrimary=world:Add(node("Model","Unconfigured"))
+assert(interactionCount(noPrimary,10)==0,"model without PrimaryPart is unsupported")
+probe:Unload()
 print("mayhem fragment game: nearby prompts, explicit GUI answers, debounce, diagnostics, entity safety OK")

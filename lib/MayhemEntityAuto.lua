@@ -229,13 +229,13 @@ function M.new(deps)
         self.goal=to
         self.status="Pathfinding: "..tostring(reason)
         self.async(function()
-            local ok,path=pcall(function()
-                local p=self.pathfinding:CreatePath({
+            local path
+            local ok=pcall(function()
+                path=self.pathfinding:CreatePath({
                     AgentRadius=2,AgentHeight=5,AgentCanJump=true,
                     WaypointSpacing=5,
                 })
-                p:ComputeAsync(from,to)
-                return p
+                path:ComputeAsync(from,to)
             end)
             if token~=self.token or not self.enabled then
                 if path then pcall(function() path:Destroy() end) end
@@ -377,6 +377,9 @@ function M.new(deps)
             or self.now-self.lastPlan>3.5)
             and self.now-self.lastPlan>=1.2 then
             self:Plan("replan")
+            -- ComputeAsync yields. Wait for the route instead of issuing a
+            -- direct MoveTo through an obstacle while the planner is running.
+            if self.computing then return end
             point=self.route[self.waypoint]
         end
         if not point then point={Position=targetRoot.Position} end

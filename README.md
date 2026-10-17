@@ -246,3 +246,9 @@ The Hotel map's second objective uses Glitch Fragments: after the first objectiv
 - Press **Inspect visible fragment puzzle (F9)** with the puzzle open to print active ScreenGui names, recognized puzzle controls, explicit-answer flags and nearby fragment prompts. If the puzzle uses an unknown ScreenGui/Frame name, enter it in **Puzzle GUI name (optional alias)**. This provides diagnostics for implementing the actual minigame logic later.
 - Uses no game remotes or teleporting, ignores unrelated ZincUI controls, does not activate while on an entity team, and unloads cleanly. Auto-interaction and GUI input depend on the executor / game input APIs.
 - The `tests/mayhem_fragment_game.lua` mocks proximity range, puzzle explicit-answer cases, repeated clicks, disabling, unknown answers, and entity-only exclusion. **In-game verification remains pending.**
+
+### v0.9 follow-up: prompt positioning and asynchronous paths
+
+- Fragment prompts now use BasePart position, Attachment world position, or a Model's PrimaryPart position. Prompts with missing required positions are skipped. Reach respects configured distances below three studs, including zero; the existing 15-stud cap remains.
+- Entity autoplay waits for an asynchronous path computation before issuing movement toward the new route. Failed computations release their allocated Path before using the existing direct fallback. Results arriving after disable are discarded and destroyed.
+- Validation: all 20 repository Lua files parsed and all 10 mocked suites passed locally using Lua 5.4 through Lupa. Added regressions cover model/attachment prompts, short/zero ranges, waiting for asynchronous routes, failed-path cleanup and cancellation after disable. These are offline mocks; live Roblox pathfinding, prompt interaction, GUI solving and ESP rendering remain unverified.

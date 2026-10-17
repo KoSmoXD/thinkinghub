@@ -92,6 +92,7 @@ ctrl:SetEnabled(true)
 ctrl:Step(.5)
 assert(ctrl.profile=="Rush" and ctrl.target==b)
 assert(ctrl.computing,"should schedule a path computation")
+assert(#ownHuman.Moves==0,"must wait for asynchronous route before moving")
 flush()
 assert(#ctrl.route==3 and #paths==1 and not ctrl.computing)
 ctrl:Step(.5)
@@ -159,4 +160,31 @@ assert(#ownHuman.Moves==n+1,"disable sends one stop MoveTo")
 ctrl:Unload()
 assert(ctrl:Status():find("Off"))
 assert(next(ctrl.route)==nil)
+
+-- Computation failures must release the allocated Path, then allow retry.
+local failingPath
+local failureService={CreatePath=function()
+    failingPath={Destroy=function(self)self.destroyed=true end,
+        ComputeAsync=function()error("mock computation failure")end}
+    return failingPath
+end}
+local failing=mod.new({player=own,players=players,pathfinding=failureService,
+    async=function(fn)fn()end})
+failing:SetEnabled(true)
+failing:Step(.5)
+assert(failingPath.destroyed,"failed ComputeAsync must destroy its Path")
+assert(not failing.computing and #failing.route==1,
+    "failed computation must finish and expose the direct fallback")
+failing:Unload()
+
+-- A result arriving after disable must never install a route or move the rig.
+ctrl:SetEnabled(true)
+ctrl:Step(.5)
+assert(ctrl.computing)
+ctrl:SetEnabled(false)
+local stoppedMoves=#ownHuman.Moves
+flush()
+assert(not ctrl.path and #ctrl.route==0 and not ctrl.computing)
+assert(paths[#paths].destroyed,"cancelled computation must destroy its result")
+assert(#ownHuman.Moves==stoppedMoves,"cancelled result must not move the rig")
 print("mayhem all-entity autoplay: role detection, chasing, path replan, abilities, teardown OK")

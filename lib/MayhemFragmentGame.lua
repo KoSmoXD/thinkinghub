@@ -81,14 +81,18 @@ function Module.new(deps)
         if self.attempted[prompt] then return false end
         local root=playerRoot()
         if not root then return false end
-        local part=prompt.Parent
-        while part and not isa(part,"BasePart") do
-            if part==deps.workspace then return false end
-            part=part.Parent
+        -- Roblox prompts can be parented to a part, attachment or model.
+        -- An attachment's world position can differ from its containing part.
+        local parent=prompt.Parent
+        local position
+        if isa(parent,"Attachment") then position=parent.WorldPosition
+        elseif isa(parent,"BasePart") then position=parent.Position
+        elseif isa(parent,"Model") and parent.PrimaryPart then
+            position=parent.PrimaryPart.Position
         end
-        if not part or not part.Position then return false end
-        local max=math.min(15,math.max(3,tonumber(prompt.MaxActivationDistance) or 10))
-        local distance=(root.Position-part.Position).Magnitude
+        if not position then return false end
+        local max=math.min(15,math.max(0,tonumber(prompt.MaxActivationDistance) or 10))
+        local distance=(root.Position-position).Magnitude
         return distance <= max
     end
     local function candidates()
