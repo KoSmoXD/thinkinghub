@@ -93,7 +93,7 @@ local state = {
     playerESP = false, enemyOnly = true, objectiveESP = false,
     fragmentESP = false, bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
-    bright = false, fovOn = false,
+    bright = false, fovOn = false, infiniteStamina = false,
     fov = 90, spectate = false,
     playerColor = "Green", uiTheme = "XP",
 }
@@ -104,6 +104,25 @@ if type(transfer) == "table" and type(transfer.state) == "table" then
         end
     end
 end
+-- The game may keep authoritative stamina in inaccessible Lua closures;
+-- this adapter only tries client-visible local values and attributes.
+local staminaController
+do
+    local url = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemStamina.lua"
+    local ok, controllerOrError = pcall(function()
+        local code = game:HttpGet(url)
+        local chunk, err = loadstring(code, "@ZincMayhem/Stamina")
+        assert(chunk, err)
+        local module = chunk()
+        return module.new(LocalPlayer)
+    end)
+    if ok then staminaController = controllerOrError
+    else warn("[Zinc Mayhem] stamina module unavailable: "..tostring(controllerOrError)) end
+end
+if state.infiniteStamina and staminaController then
+    staminaController:Enabled(true)
+end
+
 local closed = false
 local connections, markers, indexed = {}, {}, {}
 local originalLighting, oldCamera, oldFov = nil, nil, nil
@@ -697,8 +716,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.5 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.5 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.6 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.6 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -713,6 +732,7 @@ unload = function()
     setFov(false)
     setFullbright(false)
     restoreCamera()
+    if staminaController then staminaController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
     table.clear(indexed)
@@ -720,7 +740,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.5.0",
+env.ZincMayhem = {Unload = unload, Version = "0.6.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
@@ -737,6 +757,33 @@ info:AddButton({Name = "Scan pickup names to console", ButtonText = "Scan", Call
     window:SetStatus(pickupDiagnostics())
 end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
+
+local playerTab = window:CreateTab("Player")
+local movementSection = playerTab:CreateSection("Movement")
+movementSection:AddLabel("Local stamina patch is experimental; no server bypass.")
+local staminaLabel = movementSection:AddLabel(
+    staminaController and staminaController:Status() or "Stamina module unavailable")
+movementSection:AddToggle({Name = "Infinite stamina (experimental)",
+    Flag = "mayhem_stamina", Default = state.infiniteStamina,
+    Callback = function(value)
+        state.infiniteStamina = value
+        if staminaController then
+            staminaController:Enabled(value)
+            window:SetStatus("Stamina: "..staminaController:Status())
+        else
+            window:SetStatus("Stamina adapter unavailable")
+        end
+    end})
+movementSection:AddButton({Name = "Inspect local stamina sources",
+    ButtonText = "Inspect", Callback = function()
+        if not staminaController then
+            window:SetStatus("Stamina adapter unavailable"); return
+        end
+        local found = staminaController:Scan()
+        for _, line in ipairs(staminaController:Describe()) do print(line) end
+        window:SetStatus("Stamina scan: "..#found.." candidate(s); details in F9")
+    end})
+movementSection:AddLabel("No sources found? The game may hide stamina internally.")
 
 local esp = window:CreateTab("ESP")
 local playersSection = esp:CreateSection("Teams")
@@ -951,6 +998,7 @@ if state.fovOn then setFov(true) end
 local clock, scanClock = 0, 0
 track(RunService.Heartbeat, function(dt)
     if closed then return end
+    if staminaController then staminaController:Step(dt) end
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
     if scanClock >= 12 and (state.fragmentESP or state.bookESP
@@ -979,6 +1027,7 @@ track(RunService.Heartbeat, function(dt)
     if clock < 0.5 then return end
     clock = 0
     applyVisuals()
+    if staminaController then staminaLabel:Set(staminaController:Status()) end
     local playersCount, objectiveCount, fragmentCount, bookCount,
         leverCount, keyCount, exitCount, entityCount = updateESP()
     local team = LocalPlayer.Team and LocalPlayer.Team.Name or "unassigned"
