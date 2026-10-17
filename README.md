@@ -216,3 +216,17 @@ New **Player > Movement > Infinite stamina (experimental)** toggle for DOORS: MA
 **Player > Inspect local stamina sources** prints candidate paths to the F9 console. The live status label distinguishes "No accessible stamina source found" from client writes; even a successful client write does **not** confirm server-authoritative stamina will stay full. If MAYHEM computes stamina inside a private Lua closure or on the server, this toggle will not bypass it. No arbitrary closures, game remotes, or other players' data are touched.
 
 The stamina controller does not write to PlayerGui stamina bars, does not persist changes when disabled, and stops on unload or UI reload. The toggle is preserved during ZincUI/Obsidian style changes. This feature has **not been verified in a live MAYHEM round**.
+
+
+### All entity Auto Play (MAYHEM v0.8 beta)
+
+The former Rush-only Auto Play has moved to **Entities > Entity Auto Play**. It now auto-detects **Rush, Figure, Bramble, Seek, Halt, Eyes**, and **Jeff the Killer** (special/admin), with a **Generic** fallback when the player is on an entity team with an unrecognized role. The roster follows the community's MAYHEM character listing, not the standard DOORS game roster.
+
+- **Movement:** nearest living survivor (excluding same-team/entity teammates, inactive/dead players and publicly marked hiding players), Roblox PathfindingService navigation, target movement repathing, blocked-path rescan, and stall-based restart. Uses Humanoid:MoveTo and cannot control special rigs without a Humanoid.
+- **Role detection:** character/player role attributes and team name. A survivor team overrides stale selected entity attributes. Select a manual role in the dropdown only when auto detection fails.
+- **Abilities:** optional per-entity bindings. In **Entities > Per-entity ability bindings**, enter four comma-separated Roblox keys in *Primary, Ability 1, Ability 2, Ability 3* order, e.g. `Q,E,R,F`. Default `None,None,None,None` does not press anything. Each profile has separate conservative distance and cooldown rules; **Jeff's admin Ultra Attack is never auto-fired**. Exact game bindings and individual ability behavior are unverified and require user configuration.
+- **Persistence:** entity auto toggle, ability enabled toggle, manual role, and all profile key mappings survive switching ZincUI/Obsidian.
+- **Diagnostics:** status text reports active role/target, planned paths, stuck recoveries and issued ability inputs. If the game uses a client movement controller instead of Humanoid:MoveTo, no functional movement can be guaranteed.
+- **Checks:** `tests/mayhem_entities.lua` tests all profile names, role/team detection, nearest survivor, blocked path replan, movement, independent ability bindings, reset/unload and special ability restriction. Existing ROOMS module is unchanged.
+
+This is an experimental **client-side** navigation and input integration. Real in-game movement and ability use have **not** been verified on the live Overhaul test place, and additional entity variants may need specific adapters.
