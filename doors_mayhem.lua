@@ -624,8 +624,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.3 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.3 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.4 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.4 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = Enum.KeyCode.RightControl,
 })
@@ -647,7 +647,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.3.0",
+env.ZincMayhem = {Unload = unload, Version = "0.4.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
