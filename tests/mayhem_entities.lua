@@ -97,7 +97,7 @@ assert(#ctrl.route==3 and #paths==1 and not ctrl.computing)
 ctrl:Step(.5)
 assert(#ownHuman.Moves>=1,"humanoid must move to path waypoint")
 ctrl:Step(.85)
-assert(#keys>=1 and keys[1]=="Q","Rush automatically uses configured ability")
+assert(#keys>=1 and keys[1]=="R","Rush selects close-range configured ability at 14 studs")
 local oldPath=paths[1]
 oldPath.Blocked:Fire(2)
 ctrl:Step(.5)
