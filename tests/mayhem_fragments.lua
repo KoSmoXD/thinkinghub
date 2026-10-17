@@ -9,6 +9,7 @@ local prefix = [[
 local function norm(s) return tostring(s or ""):lower():gsub("[^%w]", "") end
 local Workspace = {}
 local LocalPlayer = {Character = {Name = "LocalAvatar"}}
+function LocalPlayer.Character:IsA(name) return name == "Model" end
 local Players = {GetPlayerFromCharacter = function(_, instance)
     if instance.Name == "OtherAvatar" then return {Name = "RemoteUser"} end
     return nil
