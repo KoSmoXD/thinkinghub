@@ -37,7 +37,7 @@ local function puzzleName(name, extra)
     return value=="glitchfragment" or value=="glitchpuzzle"
         or value=="fragmentpuzzle" or value=="fragmentgame"
         or value=="glitchfragmentminigame" or value=="glitchfragmentgame"
-        or value=="fragmentminigame" or value==extra
+        or value=="fragmentminigame" or (extra~="" and value==extra)
 end
 local function matchText(expected,button)
     local want=norm(expected)
@@ -67,7 +67,7 @@ function Module.new(deps)
         guiAlias="",now=0,scanAt=0,lastClick=-math.huge,
         lastPrompt=-math.huge,attempted=setmetatable({},{__mode="k"}),
         clicks=0,prompts=0,puzzles=0,unsupported=0,
-        status="Off",lastPuzzle=nil,diagnostics={},
+        status="Off",lastPuzzle=nil,clickedSteps={},diagnostics={},
     }
     local function playerRoot()
         local c=self.player.Character
@@ -154,6 +154,7 @@ function Module.new(deps)
         self.scanAt=0;self.lastClick=-math.huge
         self.lastPrompt=-math.huge
         self.lastPuzzle=nil
+        self.clickedSteps={}
         self.attempted=setmetatable({},{__mode="k"})
     end
     function self:Step(dt)
@@ -170,6 +171,7 @@ function Module.new(deps)
             local root=screens[1]
             if self.lastPuzzle~=root then
                 self.lastPuzzle=root;self.puzzles=self.puzzles+1
+                self.clickedSteps={}
             end
             local answer,buttonCount=answerFor(root)
             if not answer then
@@ -177,11 +179,20 @@ function Module.new(deps)
                 self.status="Puzzle visible: no explicit answer ("..buttonCount.." buttons)"
                 return
             end
+            local step=attr(root,"Stage") or attr(root,"Round")
+                or attr(root,"PuzzleStep") or ""
+            local signature=tostring(answer).."|"..tostring(answer.Text)
+                .."|"..tostring(step)
+            if self.clickedSteps[signature] then
+                self.status="Answer sent; waiting for puzzle to advance"
+                return
+            end
             if self.clickButton and self.now-self.lastClick>=0.8 then
                 local ok,result=pcall(self.clickButton,answer)
                 if ok and result then
                     self.clicks=self.clicks+1
                     self.lastClick=self.now
+                    self.clickedSteps[signature]=true
                     self.status="Puzzle answer clicked (client input; unverified)"
                     return
                 end
