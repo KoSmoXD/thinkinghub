@@ -29,6 +29,8 @@ jobs:
           luac5.4 -p lib/MayhemEntityAuto.lua
           luac5.4 -p tests/mayhem_entities.lua
           luac5.4 -p tests/mayhem_player_esp.lua
+          luac5.4 -p lib/MayhemFragmentGame.lua
+          luac5.4 -p tests/mayhem_fragment_game.lua
       - name: Hub mocked regression tests
         run: |
           lua5.4 tests/smoke.lua
@@ -40,3 +42,4 @@ jobs:
           lua5.4 tests/mayhem_stamina.lua
           lua5.4 tests/mayhem_entities.lua
           lua5.4 tests/mayhem_player_esp.lua
+          lua5.4 tests/mayhem_fragment_game.lua
