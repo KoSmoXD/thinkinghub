@@ -900,8 +900,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.1 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.1 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.2 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.2 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -927,7 +927,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.1",
+env.ZincMayhem = {Unload = unload, Version = "0.10.2",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -953,7 +953,8 @@ end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
 
 local playerTab = window:CreateTab("Player")
-local exploits = playerTab:CreateSection("Exploits")
+local exploitsTab = window:CreateTab("Exploits")
+local exploits = exploitsTab:CreateSection("Bigger Hitbox")
 exploits:AddLabel("Known opponents only. Server hit validation may ignore client size.")
 local hitboxStatus=exploits:AddLabel(hitboxController and hitboxController:Status()
     or "Hitbox module unavailable")

@@ -2,7 +2,8 @@
 
 ## v0.10.1: Bigger Hitbox
 
-Open **Player > Exploits > Bigger Hitbox**. The size slider accepts 2–20 studs
+In v0.10.2, open the separate **Exploits** sidebar tab, then **Bigger Hitbox**.
+The size slider accepts 2–20 studs
 (default 8). Known living opponents with HumanoidRootPart rigs are expanded
 locally; self, teammates and unknown roles are skipped. Expanded roots are
 translucent, noncolliding and massless. Original properties restore on disable,
