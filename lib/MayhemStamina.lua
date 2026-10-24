@@ -64,7 +64,15 @@ function Module.new(player)
         return false
     end
     local function allowed(node)
-        return node and not excluded(node)
+        if not node or excluded(node) then return false end
+        if node==player or node==player.Character then return true end
+        for _,root in ipairs({player,player.Character or false}) do
+            if root then
+                local ok,inside=pcall(node.IsDescendantOf,node,root)
+                if ok and inside then return true end
+            end
+        end
+        return false
     end
     local function cap(source, current)
         local locations = {}
@@ -111,6 +119,7 @@ function Module.new(player)
             end
         end
         self.sources = found
+        self.lastCharacter = player.Character
         self.scans = self.scans + 1
         self.lastStatus = #found == 0 and "No accessible stamina values"
             or ("Local stamina candidates: "..tostring(#found))
@@ -136,6 +145,7 @@ function Module.new(player)
     end
     function self:Step(dt)
         if not self.enabled then return end
+        if self.lastCharacter ~= player.Character then self:Scan() end
         dt = type(dt) == "number" and math.max(0, math.min(dt, 1)) or 0
         self.scanClock = self.scanClock + dt
         self.elapsed = self.elapsed + dt
@@ -151,7 +161,7 @@ function Module.new(player)
                 return source.mode == "attribute"
                     and item:GetAttribute(source.key) or item.Value
             end)
-            if ok and goodNumber(current) then
+            if allowed(item) and ok and goodNumber(current) then
                 local target = cap(source, current)
                 if current + 0.01 < target then
                     local updated = pcall(function()

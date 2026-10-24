@@ -1,5 +1,43 @@
 # thinkinghub
 
+## MAYHEM / Overhaul v0.10 reliability update
+
+The Mayhem adapter lives on `feat/doors-mayhem-support` (PR #1).
+Start it inside the Overhaul testing portal with:
+
+```lua
+getgenv().ZincMayhemForceOverhaul = true
+loadstring(game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/doors_mayhem.lua"))()
+```
+
+- **Emergency stop:** press **End**, or use Home > Unload, to stop automation,
+  release native prompt holds, and restore camera/lighting. End ignores text entry.
+- **Path recovery:** six-second path-request timeout, stale-result rejection,
+  proper stop on reaching a target, character hiding/death checks, and no stuck
+  replans while a path is still computing. Status includes timeout counts.
+- **Fragment assistant:** separate debounce for same-name answer buttons,
+  inactive-button exclusion, and at most three unconfirmed prompt attempts,
+  spaced at least eight seconds apart (long holds extend this delay).
+- **Respawn handling:** immediately discard old-character stamina sources and
+  reject sources moved outside the local player/current character.
+- **Visuals and UI:** preserve original FOV/fullbright settings across repeated
+  toggles and camera changes; prevent overlapping UI switches and late downloads
+  reopening an unloaded window. Periodic ESP scans discover late metadata even
+  when that category already has other indexed objects.
+- **Fault reporting:** a failing controller stops once while the other controllers
+  continue. Details appear in F9 and `getgenv().ZincMayhem.Errors`; reload to retry.
+
+Validation: 11 offline Lua 5.4 mocked test suites and syntax checks for all 21 Lua
+files. These checks do **not** establish live Roblox compatibility. Actual map
+navigation, game-specific ability bindings, fragment GUI mapping, streaming and
+server-authoritative stamina still require an in-game test. Unknown puzzle
+answers remain manual. No claim that every live-game issue is resolved.
+
+Suggested live check: enable autoplay as an entity, approach a survivor, respawn,
+then try the fragment assistant as a survivor. Toggle FOV/fullbright twice,
+switch UI styles, and press End during movement or a held prompt; confirm motion
+and holds stop and visuals restore. Capture F9 errors if any step fails.
+
 **Zinc Hub for ROOMS: Revisited.**
 
 Standalone client hub using selectable [Obsidian](https://github.com/deividcomsono/Obsidian) or **ZincUI** (our own library), plus [MSESP](https://github.com/mstudio45/MSESP). It does not require mspaint or the DOORS addon.

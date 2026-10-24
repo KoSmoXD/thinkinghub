@@ -116,7 +116,7 @@ function M.new(deps)
         player=deps.player,players=deps.players,pathfinding=deps.pathfinding,
         enabled=false,autoAbility=true,manualProfile="Auto",
         profile=nil,target=nil,path=nil,route={},waypoint=1,
-        blocked=nil,computing=false,token=0,
+        blocked=nil,computing=false,token=0,planStarted=0,pathTimeout=6,timeouts=0,
         now=0,lastScan=-math.huge,lastPlan=-math.huge,
         lastMove=-math.huge,lastSample=0,lastPos=nil,
         stagnant=0,stuck=0,plans=0,abilities=0,
@@ -148,13 +148,18 @@ function M.new(deps)
         if not other or entityAlly(other,self.player) then return nil end
         local _,root=rig(other)
         if not root then return nil end
-        if getAttr(other,"IsHiding")==true or getAttr(other,"Hiding")==true then
-            return nil
+        for _,obj in ipairs({other,other.Character}) do
+            if getAttr(obj,"IsHiding")==true or getAttr(obj,"Hiding")==true
+                or getAttr(obj,"Dead")==true or getAttr(obj,"IsDead")==true then
+                return nil
+            end
         end
         return root
     end
     function self:CurrentProfile()
-        if self.manualProfile~="Auto" then return self.manualProfile end
+        if self.manualProfile~="Auto" then
+            return PROFILES[self.manualProfile] and self.manualProfile or nil
+        end
         return activeProfile(self.player)
     end
     function self:SetBindings(profile, textOrList)
@@ -223,7 +228,7 @@ function M.new(deps)
         if self.now-self.lastPlan<1.2 and reason~="stuck"
             and reason~="blocked" then return false end
         dismissRoute()
-        self.lastPlan=self.now;self.computing=true
+        self.lastPlan=self.now;self.planStarted=self.now;self.computing=true
         local token=self.token
         local from,to=root.Position,targetRoot.Position
         self.goal=to
@@ -322,7 +327,16 @@ function M.new(deps)
         end
         local hum,root=rig(self.player)
         if not hum then
+            dismissRoute();self.target=nil
             self.status="Waiting for humanoid-controlled "..profile
+            return
+        end
+        if self.computing and self.now-self.planStarted>=self.pathTimeout then
+            dismissRoute()
+            self.timeouts=self.timeouts+1
+            self.lastPlan=self.now
+            stopMovement()
+            self.status="Path request timed out; retrying"
             return
         end
         if self.now-self.lastScan>=0.6 or not survivor(self.target) then
@@ -348,8 +362,16 @@ function M.new(deps)
         local gap=posDistance(root.Position,targetRoot.Position)
         self:UseAbility(gap)
         if gap<=4 then
+            if self.path or self.computing or #self.route>0 then
+                dismissRoute()
+                stopMovement()
+            end
             self.status=profile..": target in range ("..self.target.Name..")"
             self.stagnant=0;self.lastPos=root.Position
+            return
+        end
+        if self.computing then
+            self.lastSample=self.now;self.lastPos=root.Position;self.stagnant=0
             return
         end
         if self.now-self.lastSample>=0.65 then
@@ -382,7 +404,7 @@ function M.new(deps)
             if self.computing then return end
             point=self.route[self.waypoint]
         end
-        if not point then point={Position=targetRoot.Position} end
+        if not point then return end
         if self.now-self.lastMove>=0.45 then
             if point.Action==self.jumpAction then hum.Jump=true end
             pcall(hum.MoveTo,hum,point.Position)
@@ -392,7 +414,7 @@ function M.new(deps)
     end
     function self:Status()
         return self.status.." | paths "..self.plans.." | stuck "..self.stuck
-            .." | abilities "..self.abilities
+            .." | abilities "..self.abilities.." | timeouts "..self.timeouts
     end
     function self:Unload() self:SetEnabled(false) end
     return self

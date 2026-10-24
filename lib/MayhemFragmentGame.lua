@@ -78,7 +78,9 @@ function Module.new(deps)
     local function promptAvailable(prompt)
         if not prompt or not isa(prompt,"ProximityPrompt")
             or prompt.Enabled==false then return false end
-        if self.attempted[prompt] then return false end
+        local attempt=self.attempted[prompt]
+        if attempt and (attempt.count>=3 or self.now-attempt.at<
+            math.max(8,(tonumber(prompt.HoldDuration) or 0)+2)) then return false end
         local root=playerRoot()
         if not root then return false end
         -- Roblox prompts can be parented to a part, attachment or model.
@@ -125,7 +127,7 @@ function Module.new(deps)
     local function puzzleButtons(root)
         local buttons={}
         for _,item in ipairs(children(root)) do
-            if isa(item,"GuiButton") and visible(item) then
+            if isa(item,"GuiButton") and visible(item) and item.Active~=false then
                 buttons[#buttons+1]=item
             end
         end
@@ -154,6 +156,7 @@ function Module.new(deps)
         return nil,#buttons
     end
     function self:SetEnabled(value)
+        if deps.cancelInput then pcall(deps.cancelInput) end
         self.enabled=value==true
         self.status=self.enabled and "Waiting for Hotel fragment puzzle" or "Off"
         self.scanAt=0;self.lastClick=-math.huge
@@ -168,6 +171,7 @@ function Module.new(deps)
         if self.now < self.scanAt then return end
         self.scanAt=self.now+0.35
         if deps.isEntity and deps.isEntity() then
+            if deps.cancelInput then pcall(deps.cancelInput) end
             self.status="Paused: fragment objective is survivor-only"
             return
         end
@@ -186,18 +190,24 @@ function Module.new(deps)
             end
             local step=attr(root,"Stage") or attr(root,"Round")
                 or attr(root,"PuzzleStep") or ""
-            local signature=tostring(answer).."|"..buttonText(answer)
-                .."|"..tostring(step)
-            if self.clickedSteps[signature] then
+            -- Instance tostring() is only its name in Roblox. Distinct buttons
+            -- with the same name/text must not share a debounce entry.
+            local signature=buttonText(answer).."|"..tostring(step)
+                .."|"..tostring((getExpected(root,answer)))
+            local steps=self.clickedSteps[answer]
+            if steps and steps[signature] then
                 self.status="Answer sent; waiting for puzzle to advance"
                 return
             end
             if self.clickButton and self.now-self.lastClick>=0.8 then
+                self.lastClick=self.now
                 local ok,result=pcall(self.clickButton,answer)
                 if ok and result then
                     self.clicks=self.clicks+1
                     self.lastClick=self.now
-                    self.clickedSteps[signature]=true
+                    steps=steps or {}
+                    steps[signature]=true
+                    self.clickedSteps[answer]=steps
                     self.status="Puzzle answer clicked (client input; unverified)"
                     return
                 end
@@ -211,10 +221,13 @@ function Module.new(deps)
             if #found>0 then
                 local prompt=found[1]
                 if self.activatePrompt then
+                    self.lastPrompt=self.now
                     local ok,result=pcall(self.activatePrompt,prompt)
                     if ok and result then
                         self.prompts=self.prompts+1
-                        self.attempted[prompt]=true
+                        local previous=self.attempted[prompt]
+                        self.attempted[prompt]={at=self.now,
+                            count=(previous and previous.count or 0)+1}
                         self.lastPrompt=self.now
                         self.status="Fragment interaction sent (not server-confirmed)"
                         return

@@ -188,3 +188,36 @@ assert(not ctrl.path and #ctrl.route==0 and not ctrl.computing)
 assert(paths[#paths].destroyed,"cancelled computation must destroy its result")
 assert(#ownHuman.Moves==stoppedMoves,"cancelled result must not move the rig")
 print("mayhem all-entity autoplay: role detection, chasing, path replan, abilities, teardown OK")
+
+-- Character-level hiding/death flags must exclude a still-living Humanoid.
+b.Character.attributes.IsHiding=true
+assert(ctrl:FindNearest()==a)
+b.Character.attributes.IsHiding=nil
+b.Character.attributes.IsDead=true
+assert(ctrl:FindNearest()==a)
+b.Character.attributes.IsDead=nil
+ctrl.manualProfile="invalid profile"
+assert(ctrl:CurrentProfile()==nil)
+ctrl.manualProfile="Auto"
+
+-- A stalled ComputeAsync must not hold the controller forever, and its
+-- eventual result cannot replace a newer route.
+ctrl:SetEnabled(true)
+ctrl:Step(.5)
+assert(ctrl.computing)
+for i=1,6 do ctrl:Step(1) end
+assert(not ctrl.computing and ctrl.timeouts==1)
+flush()
+assert(#ctrl.route==0 and not ctrl.path)
+ctrl:Step(1);ctrl:Step(.5);flush()
+assert(ctrl.path and #ctrl.route>0,"retry must recover after timeout")
+local movingPath=ctrl.path
+broot.Position=v(2,0)
+local moveCount=#ownHuman.Moves
+ctrl:Step(.5)
+assert(movingPath.destroyed and not ctrl.path)
+assert(#ownHuman.Moves==moveCount+1)
+assert(ownHuman.Moves[#ownHuman.Moves]==ownRoot.Position,
+    "entering attack range must cancel the previous MoveTo")
+ctrl:Unload()
+print("mayhem autoplay: character flags, timeout recovery, stale results, arrival stop OK")

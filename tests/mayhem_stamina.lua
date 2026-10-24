@@ -106,3 +106,17 @@ assert(empty:Status()=="No accessible stamina source found")
 empty:Step(4)
 assert(empty.writes==0)
 print("mayhem experimental stamina: detection, local refill, GUI exclusion, respawn, disable: ok")
+
+stamina:Enabled(true)
+newRig:SetAttribute("Stamina",5)
+local newest=node("Model","Respawn",{attributes={Stamina=7,MaxStamina=90}})
+player.Character=newest
+stamina:Step(.1)
+assert(newRig:GetAttribute("Stamina")==5,"old rig must stop before periodic rescan")
+assert(newest:GetAttribute("Stamina")==90,"new rig is discovered immediately")
+realStamina.Parent=otherPlayer
+realStamina.Value=2
+stamina:Step(.1)
+assert(realStamina.Value==2,"reparented source must not be written")
+stamina:Unload()
+print("mayhem stamina: live respawn and reparented source protection OK")

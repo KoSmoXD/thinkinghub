@@ -177,3 +177,30 @@ local noPrimary=world:Add(node("Model","Unconfigured"))
 assert(interactionCount(noPrimary,10)==0,"model without PrimaryPart is unsupported")
 probe:Unload()
 print("mayhem fragment game: nearby prompts, explicit GUI answers, debounce, diagnostics, entity safety OK")
+
+screen.Enabled=true
+image.Attributes.IsCorrect=nil
+correct.Attributes.IsCorrect=true
+correct.Name="Answer";correct.Text="A"
+wrong.Name="Answer";wrong.Text="A"
+local sameName={__tostring=function()return "Answer" end}
+setmetatable(correct,sameName);setmetatable(wrong,sameName)
+instance:SetEnabled(true)
+instance:Step(1)
+local clickedBefore=#clicked
+correct.Attributes.IsCorrect=nil
+wrong.Attributes.IsCorrect=true
+instance:Step(1)
+assert(#clicked==clickedBefore+1 and clicked[#clicked]==wrong,
+    "same-name same-text buttons require separate identity tracking")
+screen.Attributes.Stage=99
+wrong.Active=false
+instance:Step(1)
+assert(#clicked==clickedBefore+1,"inactive button must not be clicked")
+screen.Enabled=false
+instance:SetEnabled(true)
+local activationBefore=#activated
+for i=1,30 do instance:Step(1) end
+assert(#activated==activationBefore+3,"unconfirmed prompt retries are capped at three")
+instance:Unload()
+print("mayhem fragment game: identity debounce, inactive answers, bounded retry OK")

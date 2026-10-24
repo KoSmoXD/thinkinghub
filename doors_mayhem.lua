@@ -556,6 +556,13 @@ end)
 -- Hotel Glitch Fragment objective: local prompt interaction + clearly
 -- exposed GUI answers only. Real puzzle internals can differ by version.
 local fragmentGameController
+local heldPrompts = {}
+local function releasePrompts()
+    for prompt in pairs(heldPrompts) do
+        heldPrompts[prompt] = nil
+        pcall(function() prompt:InputHoldEnd() end)
+    end
+end
 do
     local url = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemFragmentGame.lua"
     local ok, result = pcall(function()
@@ -584,8 +591,12 @@ do
             -- Native hold works for an ordinary proximity prompt in reach.
             local okBegin = pcall(function() prompt:InputHoldBegin() end)
             if not okBegin then return false end
+            local hold = {}
+            heldPrompts[prompt] = hold
             local duration = math.max(0,tonumber(prompt.HoldDuration) or 0)
             task.delay(duration + 0.1, function()
+                if heldPrompts[prompt] ~= hold then return end
+                heldPrompts[prompt] = nil
                 pcall(function() prompt:InputHoldEnd() end)
             end)
             return true
@@ -595,6 +606,7 @@ do
             isFragment=isGlitchFragment, inCharacter=insidePlayerCharacter,
             isEntity=function() return roleOf(LocalPlayer) == "Entity" end,
             clickButton=clickButton, activatePrompt=activatePrompt,
+            cancelInput=releasePrompts,
         })
     end)
     if ok then fragmentGameController=result
@@ -756,6 +768,9 @@ local function applyVisuals()
     local cam = Workspace.CurrentCamera
     if state.fovOn and cam then
         if oldCamera ~= cam then
+            if oldCamera and oldFov then
+                pcall(function() oldCamera.FieldOfView = oldFov end)
+            end
             oldCamera, oldFov = cam, cam.FieldOfView
         end
         cam.FieldOfView = state.fov
@@ -770,7 +785,7 @@ end
 local function setFullbright(value)
     state.bright = value
     if value then
-        originalLighting = {
+        originalLighting = originalLighting or {
             Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime,
             FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows,
         }
@@ -783,8 +798,6 @@ end
 local function setFov(value)
     state.fovOn = value
     if value then
-        oldCamera = Workspace.CurrentCamera
-        oldFov = oldCamera and oldCamera.FieldOfView or nil
         applyVisuals()
     elseif oldCamera and oldFov then
         pcall(function() oldCamera.FieldOfView = oldFov end)
@@ -868,8 +881,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.9 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.9 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -894,8 +907,14 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.9.0",
+env.ZincMayhem = {Unload = unload, Version = "0.10.0",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
+-- End is available even when the window is hidden. Never intercept typing.
+local UserInputService = game:GetService("UserInputService")
+track(UserInputService.InputBegan, function(input, processed)
+    if not processed and not UserInputService:GetFocusedTextBox()
+        and input.KeyCode == Enum.KeyCode.End then unload() end
+end)
 window:SetStatus((IS_OVERHAUL and "OVERHAUL TESTING" or "DOORS: MAYHEM").." | ready")
 
 local home = window:CreateTab("Home")
@@ -904,6 +923,7 @@ roleLabel = info:AddLabel("Role: detecting")
 countLabel = info:AddLabel("ESP objects: scanning")
 info:AddLabel(IS_OVERHAUL and "Build: OVERHAUL TESTING (beta)" or "Build: MAYHEM classic")
 info:AddLabel("Rounds and objectives; no linear Auto Floor.")
+info:AddLabel("Emergency stop: End unloads automation and restores visuals.")
 info:AddButton({Name = "Copy diagnostics to console", ButtonText = "Inspect", Callback = function()
     window:SetStatus(diagnostics())
 end})
@@ -1240,20 +1260,28 @@ spectateSection:AddButton({Name = "Back to my character", ButtonText = "Stop", C
     restoreCamera(); window:SetStatus("Spectate disabled")
 end})
 local styleSection = visuals:CreateSection("Interface")
+local switchingStyle = false
 styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
     Options = {"Zinc", "Obsidian"}, Default = selectedStyle,
     Callback = function(chosen)
+        if closed or switchingStyle then return end
         if chosen == selectedStyle then return end
         if chosen ~= "Obsidian" and chosen ~= "Zinc" then return end
+        switchingStyle = true
         task.defer(function()
             local ok, source = pcall(function() return game:HttpGet(selfURL
                 .. "?style=" .. game:GetService("HttpService"):GenerateGUID(false)) end)
+            if closed then return end
             if not ok or type(source) ~= "string" then
+                switchingStyle = false
                 window:SetStatus("Style switch failed: source download error")
                 return
             end
             local chunk, err = loadstring(source, "@ZincMayhem/StyleSwitch")
-            if not chunk then window:SetStatus("Style switch error: "..tostring(err)); return end
+            if not chunk then
+                switchingStyle = false
+                window:SetStatus("Style switch error: "..tostring(err)); return
+            end
             local snapshot = {}
             for key, value in pairs(state) do snapshot[key] = value end
             local aliases = {}
@@ -1292,27 +1320,33 @@ end
 
 if state.bright then setFullbright(true) end
 if state.fovOn then setFov(true) end
-local clock, scanClock = 0, 0
+local clock, scanClock, scanBusy = 0, 0, false
+local controllerFaults = {}
+local function stepController(name, controller, dt)
+    if not controller or controllerFaults[name] then return end
+    local ok, err = pcall(controller.Step, controller, dt)
+    if not ok then
+        controllerFaults[name] = tostring(err)
+        pcall(controller.Unload, controller)
+        warn("[Zinc Mayhem] "..name.." stopped: "..tostring(err))
+        window:SetStatus(name.." stopped after an error; see F9. Reload to retry.")
+    end
+end
+env.ZincMayhem.Errors = controllerFaults
 track(RunService.Heartbeat, function(dt)
     if closed then return end
-    if staminaController then staminaController:Step(dt) end
-    if entityController then entityController:Step(dt) end
-    if fragmentGameController then fragmentGameController:Step(dt) end
+    stepController("Stamina", staminaController, dt)
+    stepController("Entity autoplay", entityController, dt)
+    stepController("Fragment game", fragmentGameController, dt)
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
-    if scanClock >= 12 and (state.fragmentESP or state.bookESP
-        or state.leverESP or state.keyESP) then
+    if scanClock >= 12 and not scanBusy and (state.fragmentESP or state.bookESP
+        or state.leverESP or state.keyESP or state.objectiveESP
+        or state.exitESP or state.entityESP) then
         scanClock = 0
-        local found = {fragment = false, book = false, lever = false, key = false}
-        for instance, kind in pairs(indexed) do
-            if found[kind] ~= nil and instance.Parent
-                and instance:IsDescendantOf(Workspace) then found[kind] = true end
-        end
-        if (state.fragmentESP and not found.fragment)
-            or (state.bookESP and not found.book)
-            or (state.leverESP and not found.lever)
-            or (state.keyESP and not found.key) then
-            task.spawn(function()
+        scanBusy = true
+        task.spawn(function()
+            local ok, err = pcall(function()
                 if closed then return end
                 local all = Workspace:GetDescendants()
                 for i, instance in ipairs(all) do
@@ -1321,7 +1355,9 @@ track(RunService.Heartbeat, function(dt)
                     if i % 350 == 0 then task.wait() end
                 end
             end)
-        end
+            scanBusy = false
+            if not ok then warn("[Zinc Mayhem] rescan failed: "..tostring(err)) end
+        end)
     end
     if clock < 0.5 then return end
     clock = 0
