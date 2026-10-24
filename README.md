@@ -1,5 +1,18 @@
 # thinkinghub
 
+## v0.10.1: Bigger Hitbox
+
+Open **Player > Exploits > Bigger Hitbox**. The size slider accepts 2–20 studs
+(default 8). Known living opponents with HumanoidRootPart rigs are expanded
+locally; self, teammates and unknown roles are skipped. Expanded roots are
+translucent, noncolliding and massless. Original properties restore on disable,
+death, team change, respawn, player departure or unload (including End).
+The toggle and size survive UI style switches. This does not change the server's
+hit validation; increased hit registration is not confirmed in live gameplay.
+
+Validation: 12 mocked Lua 5.4 suites and 23 Lua syntax checks, including hitbox
+target filtering, size updates, lifecycle changes and exact property restoration.
+
 ## MAYHEM / Overhaul v0.10 reliability update
 
 The Mayhem adapter lives on `feat/doors-mayhem-support` (PR #1).

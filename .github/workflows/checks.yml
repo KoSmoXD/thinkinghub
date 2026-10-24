@@ -32,6 +32,8 @@ jobs:
           luac5.4 -p lib/MayhemFragmentGame.lua
           luac5.4 -p tests/mayhem_fragment_game.lua
           luac5.4 -p tests/mayhem_lifecycle.lua
+          luac5.4 -p lib/MayhemHitbox.lua
+          luac5.4 -p tests/mayhem_hitbox.lua
       - name: Hub mocked regression tests
         run: |
           lua5.4 tests/smoke.lua
@@ -45,3 +47,4 @@ jobs:
           lua5.4 tests/mayhem_player_esp.lua
           lua5.4 tests/mayhem_fragment_game.lua
           lua5.4 tests/mayhem_lifecycle.lua
+          lua5.4 tests/mayhem_hitbox.lua

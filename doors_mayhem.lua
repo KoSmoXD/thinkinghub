@@ -97,6 +97,7 @@ local state = {
     bright = false, fovOn = false, infiniteStamina = false,
     entityAuto = false, entityAbility = true, entityProfile = "Auto",
     fov = 90, spectate = false,
+    biggerHitbox = false, hitboxSize = 8,
     playerColor = "Green", uiTheme = "XP",
 }
 if type(transfer) == "table" and type(transfer.state) == "table" then
@@ -275,6 +276,24 @@ local function playerESPPart(character)
     return root, humanoid and "humanoid" or "custom rig"
 end
 local fragmentAliases = {}
+local hitboxController
+do
+    local ok,result=pcall(function()
+        local source=game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemHitbox.lua")
+        local chunk,err=loadstring(source,"@ZincMayhem/Hitbox")
+        assert(chunk,err)
+        return chunk().new({player=LocalPlayer,players=Players,
+            eligible=function(other)
+                local show,relation=playerESPRelation(LocalPlayer,other,true)
+                return show and relation=="enemy"
+            end})
+    end)
+    if ok then
+        hitboxController=result
+        hitboxController:SetSize(state.hitboxSize)
+        hitboxController:SetEnabled(state.biggerHitbox)
+    else warn("[Zinc Mayhem] Bigger Hitbox unavailable: "..tostring(result)) end
+end
 local function hasFragmentName(value)
     local valueName = norm(value)
     if valueName:find("glitchfragment", 1, true) ~= nil
@@ -881,8 +900,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.1 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.1 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -898,6 +917,7 @@ unload = function()
     setFullbright(false)
     restoreCamera()
     if staminaController then staminaController:Unload() end
+    if hitboxController then hitboxController:Unload() end
     if entityController then entityController:Unload() end
     if fragmentGameController then fragmentGameController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
@@ -907,7 +927,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.0",
+env.ZincMayhem = {Unload = unload, Version = "0.10.1",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -933,6 +953,20 @@ end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
 
 local playerTab = window:CreateTab("Player")
+local exploits = playerTab:CreateSection("Exploits")
+exploits:AddLabel("Known opponents only. Server hit validation may ignore client size.")
+local hitboxStatus=exploits:AddLabel(hitboxController and hitboxController:Status()
+    or "Hitbox module unavailable")
+exploits:AddToggle({Name="Bigger Hitbox",Flag="mayhem_bigger_hitbox",
+    Default=state.biggerHitbox,Callback=function(value)
+        state.biggerHitbox=value
+        if hitboxController then hitboxController:SetEnabled(value) end
+    end})
+exploits:AddSlider({Name="Hitbox size (studs)",Flag="mayhem_hitbox_size",
+    Min=2,Max=20,Increment=1,Default=state.hitboxSize,Callback=function(value)
+        state.hitboxSize=value
+        if hitboxController then hitboxController:SetSize(value) end
+    end})
 local movementSection = playerTab:CreateSection("Movement")
 movementSection:AddLabel("Local stamina patch is experimental; no server bypass.")
 local staminaLabel = movementSection:AddLabel(
@@ -1336,6 +1370,7 @@ env.ZincMayhem.Errors = controllerFaults
 track(RunService.Heartbeat, function(dt)
     if closed then return end
     stepController("Stamina", staminaController, dt)
+    stepController("Bigger Hitbox", hitboxController, dt)
     stepController("Entity autoplay", entityController, dt)
     stepController("Fragment game", fragmentGameController, dt)
     clock = clock + math.min(dt, 1)
@@ -1363,6 +1398,7 @@ track(RunService.Heartbeat, function(dt)
     clock = 0
     applyVisuals()
     if staminaController then staminaLabel:Set(staminaController:Status()) end
+    if hitboxController then hitboxStatus:Set(hitboxController:Status()) end
     if entityController then entityStatus:Set(entityController:Status()) end
     if fragmentGameController then
         fragmentGameStatus:Set(fragmentGameController:Status())
