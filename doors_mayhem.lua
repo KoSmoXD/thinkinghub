@@ -248,7 +248,7 @@ local fragmentAliases = {}
 local loopTpController
 do
     local ok,result=pcall(function()
-        local source=game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemLoopTp.lua")
+        local source=game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemLoopTp.lua?v=0.10.7")
         local chunk,err=loadstring(source,"@ZincMayhem/LoopTp")
         assert(chunk,err)
         return chunk().new({player=LocalPlayer,players=Players,roleOf=roleOf})
@@ -882,8 +882,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.6 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.6 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.7 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.7 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -908,7 +908,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.6",
+env.ZincMayhem = {Unload = unload, Version = "0.10.7",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")

@@ -1,5 +1,14 @@
 # thinkinghub
 
+## v0.10.7: skip downed survivors
+
+Auto Loop Tp excludes explicit Downed/IsDowned, Knocked/KnockedDown/IsKnocked,
+and Incapacitated/IsIncapacitated attributes or enabled BoolValues on the player,
+character, Humanoid, InfoFolder or LiveEffects. It switches to another standing
+survivor, pauses when none are available, and accepts revived targets again.
+Low health alone does not count as downed. These markers are covered by mocks;
+the live game downed marker has not yet been captured.
+
 ## v0.10.6: observed Overhaul roles and diagnostic mouse fix
 
 The shared detector now reads the live Character `Entity` string and
