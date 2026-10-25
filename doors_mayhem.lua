@@ -165,13 +165,25 @@ local function roleOf(player)
     local teamRole = team and roleToken(team.Name)
     if teamRole then return teamRole end
     local char = player.Character
-    for _, obj in ipairs({player, char or player}) do
+    for _, obj in ipairs({char or player, player}) do
         for _, key in ipairs({"Role", "CurrentRole", "Team", "Faction",
-            "CurrentEntity", "ActiveEntity", "EntityType"}) do
+            "CurrentEntity", "ActiveEntity", "EntityType", "CurrentMonster",
+            "CharacterRole", "Monster"}) do
             local ok, value = pcall(obj.GetAttribute, obj, key)
             if ok then
                 local kind=roleToken(value)
                 if kind then return kind end
+            end
+            -- Active role metadata can also be stored in StringValue children.
+            local found, child=pcall(obj.FindFirstChild,obj,key)
+            if found and child then
+                local valid,value=pcall(function()
+                    if child:IsA("StringValue") then return child.Value end
+                end)
+                if valid then
+                    local kind=roleToken(value)
+                    if kind then return kind end
+                end
             end
         end
     end
@@ -856,8 +868,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.4 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.4 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.5 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.5 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -882,7 +894,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.4",
+env.ZincMayhem = {Unload = unload, Version = "0.10.5",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -909,6 +921,22 @@ info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unlo
 
 local exploitsTab = window:CreateTab("Exploits")
 local teleportSection=exploitsTab:CreateSection("Teleport")
+teleportSection:AddButton({Name="Inspect role detection (F9)",ButtonText="Inspect",
+    Callback=function()
+        print("[Zinc Mayhem role] detected="..roleOf(LocalPlayer)
+            .." team="..tostring(LocalPlayer.Team and LocalPlayer.Team.Name))
+        for _,obj in ipairs({LocalPlayer,LocalPlayer.Character or LocalPlayer}) do
+            print("[Zinc Mayhem role] object="..obj.Name)
+            for _,key in ipairs({"Role","CurrentRole","Team","Faction","CurrentEntity",
+                "ActiveEntity","EntityType","CurrentMonster","CharacterRole","Monster"}) do
+                local child=obj:FindFirstChild(key)
+                local value=child and child:IsA("StringValue") and child.Value or nil
+                print("[Zinc Mayhem role] "..key.." attribute="..tostring(obj:GetAttribute(key))
+                    .." value="..tostring(value))
+            end
+        end
+        window:SetStatus("Role detection details printed to F9")
+    end})
 teleportSection:AddToggle({Name="Auto Loop Tp",Risky=true,
     Description="This is bannable,dont abuse this too much",
     Flag="mayhem_loop_tp",Default=state.loopTp,Callback=function(value)

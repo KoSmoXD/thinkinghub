@@ -77,3 +77,21 @@ assert(part(mockCharacter("DeadAttribute",{root=root,
     attributes={IsDead=true}}))==nil)
 assert(part(mockCharacter("NoParts"))==nil)
 print("mayhem entity-side player ESP: survivor targeting, teams, unknown roles, custom rigs OK")
+local halt=mockPlayer("HaltPlayer",nil,{},mockCharacter("HaltPlayer",
+    {root=root,hum={Health=100},attributes={CurrentMonster="Halt"}}))
+assert(role(halt)=="Entity","active Halt monster attribute must be recognized")
+halt.Character.attributes={}
+local activeValue={Value="Halt",IsA=function(_,k)return k=="StringValue"end}
+local findChild=halt.Character.FindFirstChild
+halt.Character.FindFirstChild=function(self,key)
+    if key=="ActiveEntity" then return activeValue end
+    return findChild(self,key)
+end
+assert(role(halt)=="Entity","active Halt StringValue must be recognized")
+halt.Team=survivorTeam
+assert(role(halt)=="Survivor","survivor team must still override stale active values")
+halt.Team=nil
+halt.Character.FindFirstChild=findChild
+halt.attributes.SelectedEntity="Halt"
+assert(role(halt)=="Unknown","selected loadout alone must not enable entity actions")
+print("mayhem Halt detection: active attributes/StringValues, survivor guard, loadout exclusion OK")
