@@ -669,7 +669,7 @@ function Tab:CreateSection(name)
     return section
 end
 
-function Section:_row(height, title, description)
+function Section:_row(height, title, description, risky)
     self._nextOrder = self._nextOrder + 1
     local window = self._window
     local frame = make("Frame", {
@@ -684,7 +684,8 @@ function Section:_row(height, title, description)
             Text = tostring(title),
             Font = Enum.Font.Arial, TextSize = 12,
         })
-        window:_bind(label, { TextColor3 = "Text" })
+        if risky then label.TextColor3 = Color3.fromRGB(255, 65, 65)
+        else window:_bind(label, { TextColor3 = "Text" }) end
     end
     if description then
         local desc = textLabel(frame, {
@@ -734,7 +735,7 @@ function Section:AddToggle(opts)
     local window = self._window
     local value = not not opts.Default
     local row = self:_row(opts.Description and 54 or 36,
-        opts.Name or "Toggle", opts.Description)
+        opts.Name or "Toggle", opts.Description, opts.Risky)
     local check = clickButton(row, {
         AnchorPoint = Vector2.new(1, 0.5),
         Position = UDim2.new(1, -12, 0.5, 0),

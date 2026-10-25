@@ -14,8 +14,34 @@ jobs:
         run: |
           luac5.4 -p loader.lua
           luac5.4 -p rooms_revisited.lua
+          luac5.4 -p doors_mayhem.lua
           luac5.4 -p lib/ZincAdapter.lua
           luac5.4 -p lib/ZincUI.lua
           luac5.4 -p tests/smoke.lua
+          luac5.4 -p tests/mayhem_dispatch.lua
+          luac5.4 -p tests/mayhem_fragments.lua
+          luac5.4 -p tests/mayhem_guard.lua
+          luac5.4 -p lib/MayhemObsidian.lua
+          luac5.4 -p tests/mayhem_ui.lua
+          luac5.4 -p tests/mayhem_msesp.lua
+          luac5.4 -p tests/mayhem_player_esp.lua
+          luac5.4 -p lib/MayhemFragmentGame.lua
+          luac5.4 -p tests/mayhem_fragment_game.lua
+          luac5.4 -p tests/mayhem_lifecycle.lua
+          luac5.4 -p lib/MayhemHitbox.lua
+          luac5.4 -p tests/mayhem_hitbox.lua
+          luac5.4 -p lib/MayhemLoopTp.lua
+          luac5.4 -p tests/mayhem_loop_tp.lua
       - name: Hub mocked regression tests
-        run: lua5.4 tests/smoke.lua
+        run: |
+          lua5.4 tests/smoke.lua
+          lua5.4 tests/mayhem_dispatch.lua
+          lua5.4 tests/mayhem_fragments.lua
+          lua5.4 tests/mayhem_guard.lua
+          lua5.4 tests/mayhem_ui.lua
+          lua5.4 tests/mayhem_msesp.lua
+          lua5.4 tests/mayhem_player_esp.lua
+          lua5.4 tests/mayhem_fragment_game.lua
+          lua5.4 tests/mayhem_lifecycle.lua
+          lua5.4 tests/mayhem_hitbox.lua
+          lua5.4 tests/mayhem_loop_tp.lua
