@@ -1,5 +1,15 @@
 # thinkinghub
 
+## v0.10.4: Auto Loop Tp
+
+Exploits > Teleport now contains a red **Auto Loop Tp** toggle with description
+`This is bannable,dont abuse this too much`. While enabled as a living entity,
+it moves your HumanoidRootPart to the nearest living survivor every 0.2 seconds.
+It pauses outside the entity role or without a valid target, follows respawns,
+and stops on disable/unload. The setting survives UI style changes.
+Client teleport behavior is not live-game verified.
+
+
 ## v0.10.3: removed features
 
 Infinite Stamina and entity Auto Play have been removed, including their modules,

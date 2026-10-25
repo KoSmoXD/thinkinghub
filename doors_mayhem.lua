@@ -1,6 +1,6 @@
 -- Zinc Hub | DOORS: MAYHEM (client game adapter)
 -- Supports the public MAYHEM place and DM: OVERHAUL TESTING.
--- Standalone ZincUI mode. No remotes, teleports, or arbitrary game hooks.
+-- Standalone ZincUI mode with optional client-side loop teleport.
 local MAYHEM_MAIN = 119040856156269
 local MAYHEM_UNIVERSE = 6537995571
 local function normalizeTitle(value)
@@ -84,8 +84,7 @@ if selectedStyle == "Obsidian" then
         "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemObsidian.lua")
     assert(UI, "Mayhem: Obsidian bridge could not be loaded")
 else
-    UI = fetchZinc("https://raw.githubusercontent.com/KoSmoXD/ZincUI/main/ZincUI.lua")
-        or fetchZinc("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/main/lib/ZincUI.lua")
+    UI = fetchZinc("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/ZincUI.lua")
     assert(UI, "Zinc Mayhem: failed to load ZincUI")
 end
 
@@ -97,6 +96,7 @@ local state = {
     bright = false, fovOn = false,
     fov = 90, spectate = false,
     biggerHitbox = false, hitboxSize = 8,
+    loopTp = false,
     playerColor = "Green", uiTheme = "XP",
 }
 if type(transfer) == "table" and type(transfer.state) == "table" then
@@ -219,6 +219,19 @@ local function playerESPPart(character)
     return root, humanoid and "humanoid" or "custom rig"
 end
 local fragmentAliases = {}
+local loopTpController
+do
+    local ok,result=pcall(function()
+        local source=game:HttpGet("https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemLoopTp.lua")
+        local chunk,err=loadstring(source,"@ZincMayhem/LoopTp")
+        assert(chunk,err)
+        return chunk().new({player=LocalPlayer,players=Players,roleOf=roleOf})
+    end)
+    if ok then
+        loopTpController=result
+        loopTpController:SetEnabled(state.loopTp)
+    else warn("[Zinc Mayhem] Auto Loop Tp unavailable: "..tostring(result)) end
+end
 local hitboxController
 do
     local ok,result=pcall(function()
@@ -843,8 +856,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.3 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.3 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.4 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.4 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -860,6 +873,7 @@ unload = function()
     setFullbright(false)
     restoreCamera()
     if hitboxController then hitboxController:Unload() end
+    if loopTpController then loopTpController:Unload() end
     if fragmentGameController then fragmentGameController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
@@ -868,7 +882,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.3",
+env.ZincMayhem = {Unload = unload, Version = "0.10.4",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -894,6 +908,15 @@ end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
 
 local exploitsTab = window:CreateTab("Exploits")
+local teleportSection=exploitsTab:CreateSection("Teleport")
+teleportSection:AddToggle({Name="Auto Loop Tp",Risky=true,
+    Description="This is bannable,dont abuse this too much",
+    Flag="mayhem_loop_tp",Default=state.loopTp,Callback=function(value)
+        state.loopTp=value
+        if loopTpController then loopTpController:SetEnabled(value) end
+    end})
+local loopTpStatus=teleportSection:AddLabel(loopTpController and loopTpController:Status()
+    or "Auto Loop Tp module unavailable")
 local exploits = exploitsTab:CreateSection("Bigger Hitbox")
 exploits:AddLabel("Known opponents only. Server hit validation may ignore client size.")
 local hitboxStatus=exploits:AddLabel(hitboxController and hitboxController:Status()
@@ -1197,6 +1220,7 @@ env.ZincMayhem.Errors = controllerFaults
 track(RunService.Heartbeat, function(dt)
     if closed then return end
     stepController("Bigger Hitbox", hitboxController, dt)
+    stepController("Auto Loop Tp", loopTpController, dt)
     stepController("Fragment game", fragmentGameController, dt)
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
@@ -1223,6 +1247,7 @@ track(RunService.Heartbeat, function(dt)
     clock = 0
     applyVisuals()
     if hitboxController then hitboxStatus:Set(hitboxController:Status()) end
+    if loopTpController then loopTpStatus:Set(loopTpController:Status()) end
     if fragmentGameController then
         fragmentGameStatus:Set(fragmentGameController:Status())
     end

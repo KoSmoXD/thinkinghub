@@ -71,8 +71,10 @@ function Adapter:CreateWindow(opts)
                 })
             end
             function section:AddToggle(opts)
+                if opts.Description then group:AddLabel(opts.Description, true) end
                 return bind(group:AddToggle(makeId(), {
                     Text = opts.Name, Default = opts.Default == true,
+                    Risky = opts.Risky == true, Tooltip = opts.Description,
                 }), opts.Callback)
             end
             function section:AddDropdown(opts)
