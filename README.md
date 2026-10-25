@@ -1,5 +1,17 @@
 # thinkinghub
 
+## v0.10.6: observed Overhaul roles and diagnostic mouse fix
+
+The shared detector now reads the live Character `Entity` string and
+`Survivor=true` flag observed in an Overhaul diagnostic report with no Roblox
+Teams. This fixes the missing role mapping used by ESP, Bigger Hitbox and Loop
+Tp; selected player loadouts remain excluded. Regression fixtures cover Halt,
+Guidance, survivors with entity loadouts, and round changes.
+
+The standalone role report releases first-person mouse lock with a modal close
+button and supports Right Shift to close. Reloading the hub closes an old role
+report automatically. Tests are mocked; live gameplay still needs verification.
+
 ## v0.10.4: Auto Loop Tp
 
 Exploits > Teleport now contains a red **Auto Loop Tp** toggle with description

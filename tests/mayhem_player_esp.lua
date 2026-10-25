@@ -95,3 +95,24 @@ halt.Character.FindFirstChild=findChild
 halt.attributes.SelectedEntity="Halt"
 assert(role(halt)=="Unknown","selected loadout alone must not enable entity actions")
 print("mayhem Halt detection: active attributes/StringValues, survivor guard, loadout exclusion OK")
+
+-- Reproduce the user's actual Overhaul report: no Roblox Teams, live
+-- Character.Entity strings and Character.Survivor booleans.
+local liveHalt=mockPlayer("LocalEntity",nil,{SelectedEntity="Halt"},
+    mockCharacter("LocalEntity",{root=root,hum={Health=100},attributes={Entity="Halt"}}))
+local liveSurvivor=mockPlayer("LiveSurvivor",nil,{SelectedEntity="Rush"},
+    mockCharacter("LiveSurvivor",{root=root,hum={Health=100},attributes={Survivor=true}}))
+assert(role(liveHalt)=="Entity")
+assert(role(liveSurvivor)=="Survivor")
+local shown,relationKind=relation(liveHalt,liveSurvivor,true)
+assert(shown and relationKind=="enemy","teamless survivor must be an ESP opponent")
+local guidance=mockPlayer("Support",nil,{SelectedEntity="Guidance"},
+    mockCharacter("Support",{root=root,hum={Health=100},attributes={Entity="Guidance"}}))
+assert(role(guidance)=="Entity" and not relation(liveHalt,guidance,true))
+liveHalt.Character.attributes={Survivor=true}
+assert(role(liveHalt)=="Survivor","round switch must discard old player loadout role")
+liveHalt.Character.attributes={Entity=""}
+assert(role(liveHalt)=="Unknown")
+liveHalt.Character.attributes={Entity="Halt",Survivor=true}
+assert(role(liveHalt)=="Survivor","explicit survivor flag takes priority")
+print("mayhem observed Overhaul role mapping and teamless ESP OK")

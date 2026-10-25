@@ -35,6 +35,9 @@ local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
 assert(LocalPlayer, "Zinc Mayhem requires a local client")
+local playerGui=LocalPlayer:FindFirstChildOfClass("PlayerGui")
+local roleReport=playerGui and playerGui:FindFirstChild("MayhemRoleReport")
+if roleReport then roleReport:Destroy() end
 
 local env = runtimeEnvironment
 if env.ZincMayhem and type(env.ZincMayhem.Unload) == "function" then
@@ -165,6 +168,17 @@ local function roleOf(player)
     local teamRole = team and roleToken(team.Name)
     if teamRole then return teamRole end
     local char = player.Character
+    -- Observed Overhaul round roles live on Character, not Roblox Teams.
+    -- SelectedEntity on Player is a loadout and must not be used here.
+    if char then
+        local ok,survivor=pcall(char.GetAttribute,char,"Survivor")
+        if ok and survivor==true then return "Survivor" end
+        local valid,entity=pcall(char.GetAttribute,char,"Entity")
+        if valid and type(entity)=="string" and norm(entity)~=""
+            and norm(entity)~="none" and norm(entity)~="false" then
+            return "Entity"
+        end
+    end
     for _, obj in ipairs({char or player, player}) do
         for _, key in ipairs({"Role", "CurrentRole", "Team", "Faction",
             "CurrentEntity", "ActiveEntity", "EntityType", "CurrentMonster",
@@ -868,8 +882,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.5 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.5 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.6 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.6 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -894,7 +908,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.5",
+env.ZincMayhem = {Unload = unload, Version = "0.10.6",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -928,7 +942,8 @@ teleportSection:AddButton({Name="Inspect role detection (F9)",ButtonText="Inspec
         for _,obj in ipairs({LocalPlayer,LocalPlayer.Character or LocalPlayer}) do
             print("[Zinc Mayhem role] object="..obj.Name)
             for _,key in ipairs({"Role","CurrentRole","Team","Faction","CurrentEntity",
-                "ActiveEntity","EntityType","CurrentMonster","CharacterRole","Monster"}) do
+                "ActiveEntity","EntityType","CurrentMonster","CharacterRole","Monster",
+                "Entity","Survivor"}) do
                 local child=obj:FindFirstChild(key)
                 local value=child and child:IsA("StringValue") and child.Value or nil
                 print("[Zinc Mayhem role] "..key.." attribute="..tostring(obj:GetAttribute(key))

@@ -19,15 +19,20 @@ local title=Instance.new("TextLabel")
 title.Size=UDim2.new(1,-90,0,40)
 title.BackgroundTransparency=1
 title.TextColor3=Color3.new(1,1,1)
-title.Text="MAYHEM ROLE REPORT — select text and copy"
+title.Text="ROLE REPORT — Right Shift to close"
 title.TextSize=15
 title.Parent=frame
 local close=Instance.new("TextButton")
 close.Size=UDim2.new(0,80,0,34)
 close.Position=UDim2.new(1,-85,0,3)
 close.Text="Close"
+close.Modal=true -- Release first-person mouse lock while the button is visible.
 close.Parent=frame
 close.Activated:Connect(function()gui:Destroy()end)
+local inputConnection=game:GetService("UserInputService").InputBegan:Connect(function(input)
+    if input.KeyCode==Enum.KeyCode.RightShift then gui:Destroy() end
+end)
+gui.Destroying:Connect(function()inputConnection:Disconnect()end)
 local scroll=Instance.new("ScrollingFrame")
 scroll.Position=UDim2.new(0,8,0,45)
 scroll.Size=UDim2.new(1,-16,1,-53)
