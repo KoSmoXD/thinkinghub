@@ -1,5 +1,12 @@
 # thinkinghub
 
+## v0.10.3: removed features
+
+Infinite Stamina and entity Auto Play have been removed, including their modules,
+ability bindings, settings and background updates. The now-empty Player and
+Entities tabs are gone. Bigger Hitbox remains in Exploits; ESP, visuals and the
+fragment puzzle assistant remain available. Earlier release notes below are historical.
+
 ## v0.10.1: Bigger Hitbox
 
 In v0.10.2, open the separate **Exploits** sidebar tab, then **Bigger Hitbox**.

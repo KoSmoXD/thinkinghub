@@ -94,8 +94,7 @@ local state = {
     fragmentESP = false, fragmentGame = false, fragmentGuiAlias = "",
     bookESP = false, leverESP = false,
     keyESP = false, exitESP = false, entityESP = false,
-    bright = false, fovOn = false, infiniteStamina = false,
-    entityAuto = false, entityAbility = true, entityProfile = "Auto",
+    bright = false, fovOn = false,
     fov = 90, spectate = false,
     biggerHitbox = false, hitboxSize = 8,
     playerColor = "Green", uiTheme = "XP",
@@ -107,62 +106,6 @@ if type(transfer) == "table" and type(transfer.state) == "table" then
         end
     end
 end
--- The game may keep authoritative stamina in inaccessible Lua closures;
--- this adapter only tries client-visible local values and attributes.
-local staminaController
-do
-    local url = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemStamina.lua"
-    local ok, controllerOrError = pcall(function()
-        local code = game:HttpGet(url)
-        local chunk, err = loadstring(code, "@ZincMayhem/Stamina")
-        assert(chunk, err)
-        local module = chunk()
-        return module.new(LocalPlayer)
-    end)
-    if ok then staminaController = controllerOrError
-    else warn("[Zinc Mayhem] stamina module unavailable: "..tostring(controllerOrError)) end
-end
-if state.infiniteStamina and staminaController then
-    staminaController:Enabled(true)
-end
-
--- Rush Auto Play: PathfindingService chases survivors, input hooks are opt-in.
--- Ability key mapping differs by game version; leave unmapped keys at None.
-local entityController
-local entityModuleURL = "https://raw.githubusercontent.com/KoSmoXD/thinkinghub/feat/doors-mayhem-support/lib/MayhemEntityAuto.lua"
-do
-    local ok, created = pcall(function()
-        local source = game:HttpGet(entityModuleURL)
-        local chunk, compileError = loadstring(source, "@ZincMayhem/EntityAuto")
-        assert(chunk, compileError)
-        local module = chunk()
-        local inputManager
-        pcall(function() inputManager = game:GetService("VirtualInputManager") end)
-        local validKeys = {
-            Q=true,E=true,R=true,F=true,Z=true,X=true,C=true,V=true,
-            One=true,Two=true,Three=true,Four=true,Five=true,
-            MouseButton1=false,
-        }
-        local function sendAbility(binding)
-            if not inputManager or not validKeys[binding] then return false end
-            local key = Enum.KeyCode[binding]
-            if not key then return false end
-            local success = pcall(function()
-                inputManager:SendKeyEvent(true,key,false,game)
-                inputManager:SendKeyEvent(false,key,false,game)
-            end)
-            return success
-        end
-        return module.new({
-            player=LocalPlayer, players=Players,
-            pathfinding=game:GetService("PathfindingService"),
-            workspace=Workspace, sendAbility=sendAbility,
-        })
-    end)
-    if ok then entityController=created
-    else warn("[Zinc Mayhem] Entity Auto Play unavailable: "..tostring(created)) end
-end
-
 local closed = false
 local connections, markers, indexed = {}, {}, {}
 local originalLighting, oldCamera, oldFov = nil, nil, nil
@@ -900,8 +843,8 @@ end
 
 local window = UI:CreateWindow({
     Title = "ZINC HUB  /  DOORS: MAYHEM",
-    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.2 | "..selectedStyle
-        or "MAYHEM ADAPTER 0.10.2 | "..selectedStyle,
+    Subtitle = IS_OVERHAUL and "OVERHAUL TEST 0.10.3 | "..selectedStyle
+        or "MAYHEM ADAPTER 0.10.3 | "..selectedStyle,
     Theme = state.uiTheme,
     ToggleKey = selectedStyle == "Obsidian"
         and Enum.KeyCode.RightShift or Enum.KeyCode.RightControl,
@@ -916,9 +859,7 @@ unload = function()
     setFov(false)
     setFullbright(false)
     restoreCamera()
-    if staminaController then staminaController:Unload() end
     if hitboxController then hitboxController:Unload() end
-    if entityController then entityController:Unload() end
     if fragmentGameController then fragmentGameController:Unload() end
     for instance in pairs(markers) do removeMarker(instance) end
     table.clear(markers)
@@ -927,7 +868,7 @@ unload = function()
     pcall(nativeDestroy, window)
 end
 window.Destroy = function() unload() end
-env.ZincMayhem = {Unload = unload, Version = "0.10.2",
+env.ZincMayhem = {Unload = unload, Version = "0.10.3",
     PlaceId = game.PlaceId, Overhaul = IS_OVERHAUL, UIStyle = selectedStyle}
 -- End is available even when the window is hidden. Never intercept typing.
 local UserInputService = game:GetService("UserInputService")
@@ -952,7 +893,6 @@ info:AddButton({Name = "Scan pickup names to console", ButtonText = "Scan", Call
 end})
 info:AddButton({Name = "Unload Zinc Hub", ButtonText = "Unload", Callback = unload})
 
-local playerTab = window:CreateTab("Player")
 local exploitsTab = window:CreateTab("Exploits")
 local exploits = exploitsTab:CreateSection("Bigger Hitbox")
 exploits:AddLabel("Known opponents only. Server hit validation may ignore client size.")
@@ -968,119 +908,6 @@ exploits:AddSlider({Name="Hitbox size (studs)",Flag="mayhem_hitbox_size",
         state.hitboxSize=value
         if hitboxController then hitboxController:SetSize(value) end
     end})
-local movementSection = playerTab:CreateSection("Movement")
-movementSection:AddLabel("Local stamina patch is experimental; no server bypass.")
-local staminaLabel = movementSection:AddLabel(
-    staminaController and staminaController:Status() or "Stamina module unavailable")
-movementSection:AddToggle({Name = "Infinite stamina (experimental)",
-    Flag = "mayhem_stamina", Default = state.infiniteStamina,
-    Callback = function(value)
-        state.infiniteStamina = value
-        if staminaController then
-            staminaController:Enabled(value)
-            window:SetStatus("Stamina: "..staminaController:Status())
-        else
-            window:SetStatus("Stamina adapter unavailable")
-        end
-    end})
-movementSection:AddButton({Name = "Inspect local stamina sources",
-    ButtonText = "Inspect", Callback = function()
-        if not staminaController then
-            window:SetStatus("Stamina adapter unavailable"); return
-        end
-        local found = staminaController:Scan()
-        for _, line in ipairs(staminaController:Describe()) do print(line) end
-        window:SetStatus("Stamina scan: "..#found.." candidate(s); details in F9")
-    end})
-movementSection:AddLabel("No sources found? The game may hide stamina internally.")
-
--- Shared movement engine for all MAYHEM entity roles.
-local entities = window:CreateTab("Entities")
-local auto = entities:CreateSection("Entity Auto Play (beta)")
-auto:AddLabel("Nearest survivor + PathfindingService; rescans when stuck.")
-auto:AddLabel("Supports Rush, Figure, Bramble, Seek, Halt, Eyes, Jeff and generic roles.")
-local entityStatus = auto:AddLabel(
-    entityController and entityController:Status() or "Entity controller unavailable")
-local restoredBinds = type(transfer) == "table" and transfer.entityBinds
-if entityController then
-    if type(restoredBinds) == "table" then
-        for name, binds in pairs(restoredBinds) do
-            entityController:SetBindings(name, binds)
-        end
-    elseif type(transfer) == "table" and type(transfer.rushKeys) == "table" then
-        -- Upgrade old four Rush keys to the new slot scheme.
-        local keys = transfer.rushKeys
-        entityController:SetBindings("Rush", {
-            keys.rushHour or "None", keys.comingThrough or "None",
-            keys.shockwave or "None", keys.blackout or "None",
-        })
-    end
-    entityController.autoAbility = state.entityAbility
-    entityController.manualProfile = state.entityProfile
-    if state.entityAuto then entityController:SetEnabled(true) end
-end
-auto:AddToggle({Name="Auto Play: chase nearest survivor",
-    Flag="mayhem_entity_auto", Default=state.entityAuto,
-    Callback=function(value)
-        state.entityAuto=value
-        if entityController then
-            entityController:SetEnabled(value)
-            window:SetStatus("Entities: "..entityController:Status())
-        else window:SetStatus("Entity controller unavailable") end
-    end})
-auto:AddToggle({Name="Use configured abilities automatically",
-    Flag="mayhem_entity_abilities", Default=state.entityAbility,
-    Callback=function(value)
-        state.entityAbility=value
-        if entityController then entityController.autoAbility=value end
-    end})
-auto:AddDropdown({Name="Current entity (manual override)",
-    Flag="mayhem_entity_profile", Options={"Auto","Rush","Figure","Bramble",
-        "Seek","Halt","Eyes","Jeff","Generic"},
-    Default=state.entityProfile, Callback=function(value)
-        state.entityProfile=value
-        if entityController then
-            entityController.manualProfile=value
-            entityController:Rescan()
-        end
-    end})
-auto:AddButton({Name="Rescan nearest survivor and rebuild path",
-    ButtonText="Rescan", Callback=function()
-        if not entityController then return end
-        local target=entityController:Rescan()
-        if target and entityController.enabled then
-            entityController:Plan("manual")
-        end
-        window:SetStatus(entityController:Status())
-    end})
-auto:AddLabel("Auto detection uses visible role/team attributes, not guessed characters.")
-auto:AddLabel("Requires a live Humanoid; special non-Humanoid entities may not move.")
-
-local ability = entities:CreateSection("Per-entity ability bindings")
-ability:AddLabel("Comma-separated keys: Primary, Ability 1, Ability 2, Ability 3.")
-ability:AddLabel("Allowed: None,Q,E,R,F,Z,X,C,V,One,Two,Three,Four,Five.")
-ability:AddLabel("Unknown keys default to None, so no abilities are spammed.")
-for _, profile in ipairs({"Rush","Figure","Bramble","Seek","Halt","Eyes",
-    "Jeff","Generic"}) do
-    local name = profile
-    local saved = entityController and entityController:Bindings(name)
-        or "None,None,None,None"
-    ability:AddTextbox({Name=name.." ability keys",
-        Flag="mayhem_entity_keys_"..name, Default=saved,
-        Placeholder="None,None,None,None",
-        Callback=function(value)
-            if not entityController then return end
-            if not entityController:SetBindings(name,value) then
-                window:SetStatus("Invalid "..name.." keys; expected 4 supported keys")
-            else
-                window:SetStatus(name.." ability bindings updated")
-            end
-        end})
-end
-ability:AddLabel("Jeff's Ultra Attack is never auto-used (it kicks the user).")
-ability:AddLabel("Ability mapping/cooldowns depend on game version: beta.")
-
-
 local esp = window:CreateTab("ESP")
 local playersSection = esp:CreateSection("Teams")
 playersSection:AddToggle({Name = "Player highlights", Flag = "mayhem_players",
@@ -1328,8 +1155,7 @@ styleSection:AddDropdown({Name = "UI library", Flag = "mayhem_ui_library",
             local saved = {state = snapshot, aliases = aliases,
                 bookAliases = books, leverAliases = levers, keyAliases = keys,
                 fragmentNames = customFragmentNames, keyNames = customKeyNames,
-                bookNames = customBookNames, leverNames = customLeverNames,
-                entityBinds = (entityController and entityController.binds) or {}}
+                bookNames = customBookNames, leverNames = customLeverNames}
             env.ZincMayhemTransferState = saved
             env.ZincMayhemUIStyle = chosen
             local success, result = pcall(chunk)
@@ -1370,9 +1196,7 @@ end
 env.ZincMayhem.Errors = controllerFaults
 track(RunService.Heartbeat, function(dt)
     if closed then return end
-    stepController("Stamina", staminaController, dt)
     stepController("Bigger Hitbox", hitboxController, dt)
-    stepController("Entity autoplay", entityController, dt)
     stepController("Fragment game", fragmentGameController, dt)
     clock = clock + math.min(dt, 1)
     scanClock = scanClock + math.min(dt, 1)
@@ -1398,9 +1222,7 @@ track(RunService.Heartbeat, function(dt)
     if clock < 0.5 then return end
     clock = 0
     applyVisuals()
-    if staminaController then staminaLabel:Set(staminaController:Status()) end
     if hitboxController then hitboxStatus:Set(hitboxController:Status()) end
-    if entityController then entityStatus:Set(entityController:Status()) end
     if fragmentGameController then
         fragmentGameStatus:Set(fragmentGameController:Status())
     end
